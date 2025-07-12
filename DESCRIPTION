@@ -1,0 +1,24 @@
+Package: risa
+Type: Package
+Title: An R package for species and habitat risk assessment
+Version: 0.1.0
+Authors@R: c(
+    person("Joao Bosco", "Gusmao", email = "gusmao.jb@gmail.com", 
+           role = c("aut", "cre"), comment = c(ORCID = "0000-0002-6854-8529")),
+    person("Camila", "Domit", role = "ctb"),
+    person("Hellen", "Hines", role = "ctb")
+    )
+Depends: 
+    R (>= 3.5.1)
+Imports: 
+    sf,
+    sp,
+    dplyr,
+    terra,
+    spatstat.geom,
+    spatstat.explore
+Description: The package risa is a comprehensive R toolkit for mapping and quantifying ecological risk for one or more species (or habitats). It provides utilities for delineating areas of interest, managing coordinate reference systems, computing kernel-density classifications, identifying overlapping hotspots, estimating exposure and consequence components of risk assessment, and creating thematic risk maps. Its core functions are based on InVEST modules for habitat and species risk assessment that transform raw occurrence and stressor data into standardized risk indices. Outputs may be returned as both raster and polygon layers and easily exported as GeoTIFFs or Shapefiles.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.2

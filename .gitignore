@@ -1,0 +1,13 @@
+# History and workspace
+.Rhistory
+.RData
+
+# RStudio project files
+.Rproj.user/
+
+# Mac / editor cruft
+.DS_Store
+*~
+
+# (If you ever add other IDE-specific folders)
+.vscode/

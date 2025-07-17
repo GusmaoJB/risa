@@ -5,8 +5,9 @@ Version: 0.1.0
 Authors@R: c(
     person("Joao Bosco", "Gusmao", email = "gusmao.jb@gmail.com", 
            role = c("aut", "cre"), comment = c(ORCID = "0000-0002-6854-8529")),
-    person("Camila", "Domit", role = "ctb"),
-    person("Hellen", "Hines", role = "ctb")
+    person("Ceci", "Passadore", role = "ctb"),
+    person("Hellen", "Hines", role = "ctb"),
+    person("Camila", "Domit", role = "ctb")
     )
 Depends: 
     R (>= 3.5.1)

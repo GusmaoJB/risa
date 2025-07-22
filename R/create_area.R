@@ -62,7 +62,7 @@ create_area <- function(x, crs = NULL, area_type = c("convex_hull", "bbox"), buf
     # Scale factor
     scale_factor <- 1 + buffer_frac
     # Extract original bbox
-    bb <- st_bbox(x_sf)
+    bb <- sf::st_bbox(x_sf)
     corners <- matrix(c(
       bb$xmin, bb$ymin,
       bb$xmin, bb$ymax,

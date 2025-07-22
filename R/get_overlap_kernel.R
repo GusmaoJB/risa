@@ -15,7 +15,7 @@
 #' stressor <- data.frame(long = rnorm(100, 0, 10), lat = rnorm(100, 0, 10))
 #' kde_spe <- get_class_kernel(species,  output_layer_type = "raster")
 #' kde_str <- get_class_kernel(stressor,  output_layer_type = "raster")
-#' kde_spe <- project(kde_spe, crs(kde_str), method = "bilinear")
+#' kde_spe <- terra::project(kde_spe, crs(kde_str), method = "bilinear")
 #'
 #' # Creating reclassified overlap raster
 #' overlap <- get_overlap_kernel(kde_spe, kde_str, output_layer_type = "raster")

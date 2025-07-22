@@ -29,29 +29,29 @@
 #' dev.off()
 #' par(mfrow = c(2,2))
 #'
-#' plot(st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 1")
+#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 1")
 #' plot(risa_maps$species_kernel_maps$sp1$shp, add = TRUE)
 #'
-#' plot(st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 2")
+#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 2")
 #' plot(risa_maps$species_kernel_maps$sp2$shp, add = TRUE)
 #'
-#' plot(st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Gillnet")
+#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Gillnet")
 #' plot(risa_maps$stressor_kernel_maps$gillnet$shp, add = TRUE, col=c("lightgreen", "green", "darkgreen"))
 #'
-#' plot(st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Trawling")
+#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Trawling")
 #' plot(risa_maps$stressor_kernel_maps$trawling$shp, add = TRUE, col=c("lightgreen", "green", "darkgreen"))
 #'
 #' # Overlap maps
-#' plot(st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Gillnet")
+#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Gillnet")
 #' plot(risa_maps$overlap_maps$sp1$gillnet, add = TRUE, col=c("yellow", "orange", "red"))
 #'
-#' plot(st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Gillnet")
+#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Gillnet")
 #' plot(risa_maps$overlap_maps$sp2$gillnet, add = TRUE, col=c("yellow", "orange", "red"))
 #'
-#' plot(st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Trawling")
+#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Trawling")
 #' plot(risa_maps$overlap_maps$sp1$gillnet, add = TRUE, col=c("yellow", "orange", "red"))
 #'
-#' plot(st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Trawling")
+#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Trawling")
 #' plot(risa_maps$overlap_maps$sp2$gillnet, add = TRUE, col=c("yellow", "orange", "red"))
 #' @export
 risa_prep <- function(x, y, area = NULL, n_classes = 3,

@@ -7,7 +7,7 @@
 #' @param area_type Character; one of \code{"convex_hull"} or \code{"bbox"}. Default is \code{"convex_hull"}.
 #' @param buffer_frac Numeric; fraction by which to buffer the hull or bounding box. (e.g. 0.5 for 50\%.)
 #' @return An `sf` object representing the area polygon.
-#' @importFrom sf st_crs st_coordinates st_centroid st_transform st_convex_hull st_union st_polygon st_sfc st_geometry
+#' @importFrom sf st_crs st_coordinates st_centroid st_transform st_convex_hull st_union st_polygon st_sfc st_geometry st_bbox
 #' @examples
 #' # Create test data
 #' coords <- data.frame(long = c(1,2,2,4), lat = c(4,4,2,2))

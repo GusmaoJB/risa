@@ -1,6 +1,6 @@
 #' Export nested list of maps to files
 #'
-#' Recursively writes raster and sf layers from a nested list to disk, optionally zipping.
+#' Recursively writes `SpatRaster` and `sf` layers, respectively as `.tif` and shapefiles, from a nested list to disk, optionally zipping.
 #'
 #' @param x A nested list of `SpatRaster`, `sf`, or further lists.
 #' @param out_dir Character path to output directory.

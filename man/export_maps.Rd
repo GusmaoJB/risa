@@ -19,5 +19,22 @@ export_maps(x, out_dir, path = character(), zip_export = FALSE)
 Invisibly returns `NULL`. Files are written to `out_dir`.
 }
 \description{
-Recursively writes raster and sf layers from a nested list to disk, optionally zipping.
+Recursively writes `SpatRaster` and `sf` layers, respectively as `.tif` and shapefiles, from a nested list to disk, optionally zipping.
+}
+\examples{
+# Creating test data
+spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
+                           lat = rnorm(80, 0, 10), species = "sp1"),
+                data.frame(long = rnorm(60, 0, 10),
+                           lat = rnorm(60, 0, 10), species = "sp2"))
+str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
+                           lat = rnorm(100, 0, 10), stressor = "trawling"),
+                data.frame(long = rnorm(50, 0, 10),
+                           lat = rnorm(100, 0, 5), stressor = "gillnet"))
+
+# Create kernel maps of species and stressor distributions and overlap maps
+risa_maps <- risa_prep(spp_df, str_df)
+
+# Export vector and raster objects as shapefiles and tiff to external folder
+export_maps(risa_maps, "my_folder")
 }

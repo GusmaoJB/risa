@@ -64,7 +64,7 @@ get_class_kernel <- function(x, area = NULL, n_classes = 3, output_layer_type = 
   }
 
   area_m <- transform_to_metric(area)
-  crs_proj <- st_crs(area$shape)$wkt
+  crs_proj <- st_crs(area_m$shape)$wkt
   x_m <- transform_to_metric(x_sf, metric_crs = st_crs(area_m$shape)$epsg)
   coords_x <- x_m$coordinates
 

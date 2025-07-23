@@ -45,7 +45,10 @@ export_maps <- function(x, out_dir, path = character(), zip_export = FALSE) {
   # Handle SpatRaster
   if (inherits(x, "SpatRaster")) {
     out_file <- file.path(out_dir, paste0(base_name, ".tif"))
-    terra::writeRaster(x, filename = out_file, overwrite = TRUE)
+    terra::writeRaster(x,
+                       filename = out_file,
+                       filetype = "GTiff",
+                       overwrite = TRUE)
 
     # Handle sf
   } else if (inherits(x, "sf")) {

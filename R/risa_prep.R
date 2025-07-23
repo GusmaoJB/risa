@@ -112,7 +112,7 @@ risa_prep <- function(x, y, area = NULL, n_classes = 3,
                               radius = radius)
       if (output_decimal_crs) {
         ker$raster <- convert_to_decimal_degrees(ker$raster)
-        ker$shp    <- convert_to_decimal_degrees(ker$shp)
+        ker$shp <- convert_to_decimal_degrees(ker$shp)
       }
       return(ker)
     })

@@ -1,12 +1,182 @@
 # Function to perform habitat risk assessment (HRA)
 
-# Loading data and dummy criteria table
-pont_shp <- st_read(paste(path_spps, "pont.shp", sep="/"))
-traw_shp <- st_read(paste(path_spps, "traw.shp", sep="/"))
-criteria <- read.csv(paste(dir, "byra_docs/criteria_scores_test.csv", sep="/"))
-criteria
+# Creating test data
+species <- data.frame(long = rnorm(80, 0, 10),
+                   lat = rnorm(80, 0, 10), species = "sp1")
 
-input_maps <- risa_prep(pont_shp, traw_shp, output_layer_type = "raster")
+stressor <- data.frame(long = rnorm(100, 0, 5),
+                   lat = rnorm(100, 0, 10), stressor = "trawling")
+
+# Create kernel maps of species and stressor distributions and overlap maps
+input_maps <- risa_prep(species, stressor, output_layer_type = "raster")
+
+# Loading criteria table
+reshape_habitat_data <- function(path) {
+  # 1. read & drop truly empty lines
+  lines <- readLines(path)
+  lines <- lines[nzchar(lines)]
+
+  # 2. auto‐detect delimiter on the header row
+  hdr     <- lines[1]
+  n_comma <- sum(strsplit(hdr, "")[[1]] == ",")
+  n_tab   <- sum(strsplit(hdr, "")[[1]] == "\t")
+  delim   <- if (n_tab > n_comma) "\t" else ","
+
+  # 3. split each line
+  parts <- strsplit(lines, delim, fixed = TRUE)
+
+  # 4. grab species name from the very first row, 2nd field
+  species <- parts[[1]][2]
+
+  out <- list()
+  current_stressor <- NA_character_
+  in_attr   <- FALSE
+  in_stress <- FALSE
+
+  # 5. loop over the rest
+  for (row in parts[-1]) {
+    # —— NEW: skip any row where every field is blank
+    if (all(trimws(row) == "")) next
+
+    # detect start of Attributes
+    if (row[1] == "HABITAT RESILIENCE ATTRIBUTES") {
+      in_attr   <- TRUE
+      in_stress <- FALSE
+      next
+    }
+    # detect the overall Stressor header
+    if (row[1] == "HABITAT STRESSOR OVERLAP PROPERTIES") {
+      in_attr   <- FALSE
+      in_stress <- FALSE
+      next
+    }
+
+    # detect the start of any stressor block:
+    #  "row2 == 'RATING'" but not one of our two section headers
+    if (length(row) >= 2 &&
+        row[2] == "RATING" &&
+        ! row[1] %in% c(
+          "HABITAT RESILIENCE ATTRIBUTES",
+          "HABITAT STRESSOR OVERLAP PROPERTIES"
+        )
+    ) {
+      current_stressor <- row[1]
+      in_attr   <- FALSE
+      in_stress <- TRUE
+      next
+    }
+
+
+    # skip any header‐rows (those that say “RATING” in col 2)
+    if (length(row) >= 2 && row[2] == "RATING") next
+
+    # pad short rows so we can safely index 1:5
+    if (length(row) < 5) {
+      row <- c(row, rep(NA_character_, 5 - length(row)))
+    }
+
+    # build a data.frame row
+    out[[length(out) + 1]] <- data.frame(
+      HABITAT_NAME               = species,
+      ATRIBUTES_AND_PROPERTIES   = row[1],
+      STRESSOR                   = if (in_stress) current_stressor else NA_character_,
+      RATING                     = as.numeric(row[2]),
+      DQ                         = as.numeric(row[3]),
+      WEIGHT                     = as.numeric(row[4]),
+      `E/C`                      = row[5],
+      stringsAsFactors           = FALSE,
+      check.names                = FALSE
+    )
+  }
+
+  # bind & return
+  do.call(rbind, out)
+}
+
+
+
+df_long <- reshape_habitat_data("C:/Users/gusma/Documents/risa_maps_test/criteria/test_criteria.csv")
+df_long
+dim(df_long)
+
+lines <- readLines("C:/Users/gusma/Documents/risa_maps_test/criteria/test_criteria.csv")
+test <- read.csv("C:/Users/gusma/Documents/risa_maps_test/criteria/test_criteria.csv")
+test
+lines <- lines[nzchar(lines)]
+lines
+
+
+tes <- split_by_habitat("C:/Users/gusma/Documents/risa_maps_test/criteria/multi_species_criteria.csv")
+tes
+
+split_by_habitat <- function(path) {
+  # 1) read & drop truly blank lines
+  lines <- readLines(path)
+  lines <- lines[nzchar(lines)]
+
+  # 2) sniff delimiter on the very first line
+  delim <- if (any(grepl("\t", lines[1], fixed = TRUE))) "\t" else ","
+
+  # 3) parse out the two header rows
+  h1 <- strsplit(lines[1], delim, fixed = TRUE)[[1]]
+  h2 <- strsplit(lines[2], delim, fixed = TRUE)[[1]]
+
+  # 4) locate the metric‐blocks and the E/C column
+  rating_cols <- which(h2 == "RATING")
+  dq_cols     <- which(h2 == "DQ")
+  weight_cols <- which(h2 == "WEIGHT")
+  ec_col      <- which(h2 == "E/C")[1]
+  habitats    <- h1[rating_cols]
+
+  # 5) bulk‐read the rest of the table (skip the two header rows)
+  df <- read.table(
+    path,
+    header         = FALSE,
+    sep            = delim,
+    skip           = 2,
+    stringsAsFactors = FALSE,
+    fill           = TRUE,
+    comment.char   = ""
+  )
+  # pad to the same width as the header row
+  if (ncol(df) < length(h2)) {
+    df[ , (ncol(df)+1):length(h2)] <- NA
+  }
+
+  # 6) drop
+  #    • any row that’s entirely blank
+  #    • the “HABITAT STRESSOR OVERLAP PROPERTIES” marker
+  #    • any row whose second column is literally the word "RATING"
+  df <- df[!apply(df, 1, function(r) all(is.na(r) | r == "")), ]
+  df <- df[df[[1]] != "HABITAT STRESSOR OVERLAP PROPERTIES", ]
+  df <- df[ df[[2]] != "RATING", ]
+
+  # 7) slice out one data.frame per habitat
+  out <- setNames(vector("list", length(habitats)), habitats)
+  for (i in seq_along(habitats)) {
+    out[[i]] <- data.frame(
+      # first column: attribute/property name
+      ATTRIBUTES_AND_PROPERTIES = df[[1]],
+      # that habitat’s RATING/DQ/WEIGHT
+      RATING =   suppressWarnings(as.numeric(df[[ rating_cols[i] ] ])),
+      DQ     =   suppressWarnings(as.numeric(df[[ dq_cols[i]     ] ])),
+      WEIGHT =  suppressWarnings(as.numeric(df[[ weight_cols[i] ] ])),
+      # the shared E/C column
+      `E/C`  =   df[[ ec_col ]],
+      stringsAsFactors = FALSE,
+      check.names      = FALSE
+    )
+  }
+
+  out
+}
+
+
+
+
+
+
+
 
 # Split consequence (C) and exposure (E)
 C_df <- criteria %>% filter(E_C == "C")

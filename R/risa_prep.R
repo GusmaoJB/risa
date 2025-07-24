@@ -138,5 +138,6 @@ risa_prep <- function(x, y, area = NULL, n_classes = 3,
   # Output
   all_maps <- list(spp_kernel_list, stressor_kernel_list, overlap_maps_list, area)
   names(all_maps) <- c("species_kernel_maps", "stressor_kernel_maps", "overlap_maps", "area_of_interest")
+  class(all_maps) <- c("risa", class(all_maps))
   return(all_maps)
 }

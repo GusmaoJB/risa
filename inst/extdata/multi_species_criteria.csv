@@ -1,4 +1,4 @@
-﻿HABITAT NAME,[speciesA],,,[speciesB],,,CRITERIA TYPE,
+HABITAT NAME,species1,,,species2,,,CRITERIA TYPE,
 HABITAT RESILIENCE ATTRIBUTES,RATING,DQ,WEIGHT,RATING,DQ,WEIGHT,E/C,Rating Instruction
 age of maturity,2,2,2,3,3,3,C,"(3) > 4 years, (2) 2-4 years, (1) < 2 years, or (0) no score"
 reproductive strategy,2,2,2,3,3,3,C,"(3) long calving interval / high parental investment, (2) medium calving interval / high parental investment, (1) short calving interval / short to medium parental investmentl, (0) no score"
@@ -6,7 +6,7 @@ population connectivity,2,2,2,3,3,3,C,"(3) negligible movement/exchange between 
 local species status,2,2,2,3,3,3,C,"(3) endangered, (2) threatened or of concern, (1) low concern, or ( 0) no score"
 ,,,,,,,,
 HABITAT STRESSOR OVERLAP PROPERTIES,,,,,,,,
-[stressor1],RATING,DQ,WEIGHT,RATING,DQ,WEIGHT,E/C,Rating Instruction
+stressor1,RATING,DQ,WEIGHT,RATING,DQ,WEIGHT,E/C,Rating Instruction
 mortality,2,2,2,2,2,2,C,"(3) lethal, (2) sublethal, (1) negligible, (0) no score"
 life stages affected by gear,2,2,2,2,2,2,C,"(3) adults only, (2) mixed (1) juveniles only, (0) unknown"
 intensity,[file path of the stressor/fishing shapefile],2,2,[file path of the stressor/fishing shapefile],2,2,C,"(3) high, (2) medium, (1) low, (0) no score"
@@ -15,7 +15,7 @@ temporal overlap,2,2,2,2,2,2,E,"(3) timing of overlap all year (12 mo), (2) most
 catchability,2,2,2,2,2,2,E,"(3) high, (2) medium, (1) low, (0) no score"
 current status of management,2,2,2,2,2,2,E,"(3) no strategy identified, (2) management strategy identified, (1) management strategy identified and implemented, (0) no score"
 ,,,,,,,,
-[stressor2],RATING,DQ,WEIGHT,RATING,DQ,WEIGHT,E/C,Rating Instruction
+stressor2,RATING,DQ,WEIGHT,RATING,DQ,WEIGHT,E/C,Rating Instruction
 mortality,2,2,2,1,1,1,C,"(3) lethal, (2) sublethal, (1) negligible, (0) no score"
 life stages affected by gear,2,2,2,1,1,1,C,"(3) adults only, (2) mixed (1) juveniles only, (0) unknown"
 intensity,[file path of the stressor/fishing shapefile],2,2,[file path of the stressor/fishing shapefile],1,1,C,"(3) high, (2) medium, (1) low, (0) no score"

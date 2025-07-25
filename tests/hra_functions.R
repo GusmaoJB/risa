@@ -1,97 +1,17 @@
 # Function to perform habitat risk assessment (HRA)
 
 # Creating test data
-species <- data.frame(long = rnorm(80, 0, 10),
-                   lat = rnorm(80, 0, 10), species = "sp1")
+species1 <- data.frame(long = rnorm(80, 0, 10),
+                   lat = rnorm(80, 0, 10), species = "species1")
 
 stressor <- data.frame(long = rnorm(100, 0, 5),
-                   lat = rnorm(100, 0, 10), stressor = "trawling")
+                   lat = rnorm(100, 0, 10), stressor = "stressor1")
 
 # Create kernel maps of species and stressor distributions and overlap maps
 input_maps <- risa_prep(species, stressor, output_layer_type = "raster")
 
-# Loading criteria table
-reshape_habitat_data <- function(path) {
-  # 1. read & drop truly empty lines
-  lines <- readLines(path)
-  lines <- lines[nzchar(lines)]
-
-  # 2. auto‐detect delimiter on the header row
-  hdr     <- lines[1]
-  n_comma <- sum(strsplit(hdr, "")[[1]] == ",")
-  n_tab   <- sum(strsplit(hdr, "")[[1]] == "\t")
-  delim   <- if (n_tab > n_comma) "\t" else ","
-
-  # 3. split each line
-  parts <- strsplit(lines, delim, fixed = TRUE)
-
-  # 4. grab species name from the very first row, 2nd field
-  species <- parts[[1]][2]
-
-  out <- list()
-  current_stressor <- NA_character_
-  in_attr   <- FALSE
-  in_stress <- FALSE
-
-  # 5. loop over the rest
-  for (row in parts[-1]) {
-    # —— NEW: skip any row where every field is blank
-    if (all(trimws(row) == "")) next
-
-    # detect start of Attributes
-    if (row[1] == "HABITAT RESILIENCE ATTRIBUTES") {
-      in_attr   <- TRUE
-      in_stress <- FALSE
-      next
-    }
-    # detect the overall Stressor header
-    if (row[1] == "HABITAT STRESSOR OVERLAP PROPERTIES") {
-      in_attr   <- FALSE
-      in_stress <- FALSE
-      next
-    }
-
-    # detect the start of any stressor block:
-    #  "row2 == 'RATING'" but not one of our two section headers
-    if (length(row) >= 2 &&
-        row[2] == "RATING" &&
-        ! row[1] %in% c(
-          "HABITAT RESILIENCE ATTRIBUTES",
-          "HABITAT STRESSOR OVERLAP PROPERTIES"
-        )
-    ) {
-      current_stressor <- row[1]
-      in_attr   <- FALSE
-      in_stress <- TRUE
-      next
-    }
 
 
-    # skip any header‐rows (those that say “RATING” in col 2)
-    if (length(row) >= 2 && row[2] == "RATING") next
-
-    # pad short rows so we can safely index 1:5
-    if (length(row) < 5) {
-      row <- c(row, rep(NA_character_, 5 - length(row)))
-    }
-
-    # build a data.frame row
-    out[[length(out) + 1]] <- data.frame(
-      HABITAT_NAME               = species,
-      ATRIBUTES_AND_PROPERTIES   = row[1],
-      STRESSOR                   = if (in_stress) current_stressor else NA_character_,
-      RATING                     = as.numeric(row[2]),
-      DQ                         = as.numeric(row[3]),
-      WEIGHT                     = as.numeric(row[4]),
-      `E/C`                      = row[5],
-      stringsAsFactors           = FALSE,
-      check.names                = FALSE
-    )
-  }
-
-  # bind & return
-  do.call(rbind, out)
-}
 
 
 

@@ -1,26 +1,29 @@
-#’ Reshape a criteria table into species‐specific data frames
+#’ Reshape a criteria table into a list of species‐specific data frames
 #’
-#’ Splits a criteria table—where the first column lists stressors (with blank rows as separators)
-#’ and the remaining columns are organized in triplets per species plus a final rating column—
-#’ into a list of data frames, one for each species. Extracts and recycles stressor names,
-#’ removes header/blank rows, adds a `STRESSOR` column, and converts `RATING` to integer.
+#’ Splits a criteria table, where the first column lists species attributes and stressors properties (with blank rows as separators)
+#’ and the remaining columns are organized in triplets, with RATING, DQ, and WEIGHT per species plus a final CRITEIRA TYPE (E/C) column—
+#’ into a list of data frames, one for each species.  It extracts and recycles stressor names,
+#’ removes header/blank rows, adds a `STRESSOR` column.
 #’
 #’ @param x A `data.frame` with:
 #’   * Column 1: stressor names, separated by blank (`""`) or `NA` rows
-#’   * Columns 2–(3*n+1): groups of three columns per species
-#’   * Last column: `RATING` values
+#’   * Columns with species and stressor attributes (groups of three columns per species)
+#’   * Last column: `CRITERIA TYPE` values (E or C)
 #’ @return A named `list` of `data.frame` objects, one per species. Each element has:
 #’   * `STRESSOR`: factor of stressor names
 #’   * the original attribute columns for that species
 #’   * `RATING`: integer rating
 #’ @examples
-#’ \donttest{
-#’ # Suppose you have a CSV at inst/extdata/criteria_example.csv matching the expected layout:
-#’ path    <- system.file("extdata", "criteria_example.csv", package = "risa")
-#’ criteria <- read.csv(path, stringsAsFactors = FALSE)
-#’ result   <- criteria_reshape(criteria)
-#’ str(result[[1]])  # inspect the first species
-#’ }
+#' #Load example data
+#' path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
+#' df <- read.csv(path)
+#'
+#' #Inspect dataframe
+#' head(df)
+#'
+#' #Reshape criteria table
+#' crit_list <- criteria_reshape(df)
+#' crit_list
 #’ @export
 criteria_reshape <- function(x) {
   df_list <- list()
@@ -63,18 +66,3 @@ criteria_reshape <- function(x) {
   names(df_list) <- names(x)[seq(2,(sp_n*3), 3)]
   return(df_list)
 }
-
-
-
-path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
-path
-
-df   <- read.csv(path, stringsAsFactors = FALSE)
-
-path <- "C:/Users/gusma/Documents/risa_maps_test/criteria"
-criteria <- read.csv(paste(path, "/test_criteria.csv", sep=""))
-multi_criteria <- read.csv(paste(path, "/multi_species_criteria.csv", sep=""))
-
-
-crit_list <- criteria_reshape(multi_criteria)
-crit_list

@@ -59,7 +59,7 @@ risa_prep <- function(x, y, area = NULL, n_classes = 3,
                       output_decimal_crs = FALSE) {
 
   # Checking x and y
-  spp_list_shp <- spp_df
+  spp_list_shp <- x
   if (inherits(spp_list_shp, "data.frame")) {
     message("Input x (species) is a data.frame or shapefile of species distributions")
     spp_list_shp <- df_to_list(spp_list_shp)

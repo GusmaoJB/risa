@@ -1,19 +1,18 @@
-#’ Reshape a criteria table into a list of species‐specific data frames
-#’
-#’ Splits a criteria table, where the first column lists species attributes and stressors properties (with blank rows as separators)
-#’ and the remaining columns are organized in triplets, with RATING, DQ, and WEIGHT per species plus a final CRITEIRA TYPE (E/C) column—
-#’ into a list of data frames, one for each species.  It extracts and recycles stressor names,
-#’ removes header/blank rows, adds a `STRESSOR` column.
-#’
-#’ @param x A `data.frame` with:
-#’   * Column 1: stressor names, separated by blank (`""`) or `NA` rows
-#’   * Columns with species and stressor attributes (groups of three columns per species)
-#’   * Last column: `CRITERIA TYPE` values (E or C)
-#’ @return A named `list` of `data.frame` objects, one per species. Each element has:
-#’   * `STRESSOR`: factor of stressor names
-#’   * the original attribute columns for that species
-#’   * `RATING`: integer rating
-#’ @examples
+#' Reshape a criteria table into a list of data frames respective to each species
+#'
+#' Splits a standard criteria table for Habitat Risk Assessment
+#' (a column with species and stressor attribute descriptors, columns with rating values for each species, and a criteria type column)
+#' into a list of data frames (one for each species).  It extracts and recycles stressor names,
+#' removes header/blank rows, adds a `STRESSOR` column.
+#'
+#' @param x A `data.frame` with a column with stressor names,
+#' columns with species and stressor attributes (groups of three columns per species),
+#' a last column with CRITERIA TYPE` values (E or C). It is separated in row blocks for
+#' species attributes and stressor properties by "" or NAs.
+#' @return A named `list` of `data.frame` objects, one per species. Each element has:
+#' `STRESSOR`, which is a factor of stressor names, and the original attribute columns for that species.
+#' @examples
+#' #test
 #' #Load example data
 #' path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
 #' df <- read.csv(path)
@@ -24,7 +23,7 @@
 #' #Reshape criteria table
 #' crit_list <- criteria_reshape(df)
 #' crit_list
-#’ @export
+#' @export
 criteria_reshape <- function(x) {
   df_list <- list()
   sp_n <- (dim(x)[2]-2) %/% 3

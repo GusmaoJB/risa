@@ -2,17 +2,34 @@
 % Please edit documentation in R/criteria_reshape.R
 \name{criteria_reshape}
 \alias{criteria_reshape}
-\title{#Load example data
-path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
-df <- read.csv(path)}
+\title{Reshape a criteria table into a list of data frames respective to each species}
 \usage{
 criteria_reshape(x)
 }
+\arguments{
+\item{x}{A `data.frame` with a column with stressor names,
+columns with species and stressor attributes (groups of three columns per species),
+a last column with CRITERIA TYPE` values (E or C). It is separated in row blocks for
+species attributes and stressor properties by "" or NAs.}
+}
+\value{
+A named `list` of `data.frame` objects, one per species. Each element has:
+`STRESSOR`, which is a factor of stressor names, and the original attribute columns for that species.
+}
 \description{
+Splits a standard criteria table for Habitat Risk Assessment (a column with species and stressor attribute descriptors, columns with rating values for each species, and a criteria type column)
+into a list of data frames (one for each species).  It extracts and recycles stressor names,
+removes header/blank rows, adds a `STRESSOR` column.
+}
+\examples{
+#test
+#Load example data
+path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
+df <- read.csv(path)
+
 #Inspect dataframe
 head(df)
-}
-\details{
+
 #Reshape criteria table
 crit_list <- criteria_reshape(df)
 crit_list

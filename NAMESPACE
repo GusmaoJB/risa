@@ -2,6 +2,7 @@
 
 export(convert_to_decimal_degrees)
 export(create_area)
+export(criteria_reshape)
 export(df_to_list)
 export(df_to_shp)
 export(export_maps)

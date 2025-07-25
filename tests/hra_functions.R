@@ -10,7 +10,7 @@ stressor <- data.frame(long = rnorm(100, 0, 5),
 # Create kernel maps of species and stressor distributions and overlap maps
 input_maps <- risa_prep(species, stressor, output_layer_type = "raster")
 
-
+library(risa)
 
 
 

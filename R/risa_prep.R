@@ -69,7 +69,7 @@ risa_prep <- function(x, y, area = NULL, n_classes = 3,
     stop("Error: Species (x) input must be one of the following object types: 'sf', 'data.frame', or a list of 'sf'")
   }
 
-  stressor_list_shp <- str_df
+  stressor_list_shp <- y
   if (inherits(stressor_list_shp, "data.frame")) {
     message("Input y (stressor) is a data.frame or shapefile of stressor distributions")
     stressor_list_shp <- df_to_list(stressor_list_shp)

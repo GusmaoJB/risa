@@ -17,7 +17,8 @@ A named `list` of `data.frame` objects, one per species. Each element has:
 `STRESSOR`, which is a factor of stressor names, and the original attribute columns for that species.
 }
 \description{
-Splits a standard criteria table for Habitat Risk Assessment (a column with species and stressor attribute descriptors, columns with rating values for each species, and a criteria type column)
+Splits a standard criteria table for Habitat Risk Assessment
+(a column with species and stressor attribute descriptors, columns with rating values for each species, and a criteria type column)
 into a list of data frames (one for each species).  It extracts and recycles stressor names,
 removes header/blank rows, adds a `STRESSOR` column.
 }

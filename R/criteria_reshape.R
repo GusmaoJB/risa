@@ -57,8 +57,12 @@ criteria_reshape <- function(x) {
       skip_rows <- c(1, line_breaks[1]:(line_breaks[1]+2), line_breaks[-1], (line_breaks[-1]+1))
     }
     sub_df <- sub_df[-c(skip_rows),]
+    names(sub_df)[1] <- "ATTRIBUTES"
     sub_df <- cbind.data.frame(STRESSOR = c(spe_attr, str_attr), sub_df)
     sub_df$RATING <- as.integer(sub_df$RATING)
+    sub_df$DQ <- as.integer(sub_df$DQ)
+    sub_df$WEIGHT <- as.integer(sub_df$WEIGHT)
+
     df_list[[i]] <- sub_df
     counter <- counter+2
   }

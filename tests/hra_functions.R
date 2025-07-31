@@ -19,7 +19,9 @@ crit_list <- criteria_reshape(criteria_csv)
 criteria <- crit_list[[1]]
 criteria <- criteria[!criteria$STRESSOR == "stressor2",]
 criteria <- cbind.data.frame(SPECIES = c(rep("species1", dim(criteria)[1])), criteria)
-criteria
+
+criteria[,c("RATING", "DQ", "WEIGHT")] <- ifelse(criteria[,c("RATING", "DQ", "WEIGHT")] == 2, 3, NA)
+
 
 # Split consequence (C) and exposure (E)
 C_df <- criteria[criteria$`E/C` == "C",]
@@ -36,7 +38,7 @@ raster_mapping_C <- list(
   intensity = raster_list$stressor_kernel_maps$stressor1$raster
 )
 raster_mapping_E <- list(
-  likelihood_of_interaction = raster_list$overlap_maps$species1$stressor1
+  likelihood_of_interaction = raster_list$overlap_maps$species1$stressor1$raster
 )
 
 # Select constant criteria (with rating), and divide value by DQ * Weight
@@ -66,6 +68,15 @@ for(i in seq_len(nrow(E_mapped))){
   E_numer_rast <- E_numer_rast + (r / (crit$DQ * crit$WEIGHT))
 }
 
+terra::plot(C_numer_rast)
+terra::plot(E_numer_rast)
+
+sp1_distr <- raster_list$species_distributions$species1$raster
+sp1_distr <- terra::ifel(!is.na(sp1_distr),0,NA)
+
+#C_numer_rast <- terra::mosaic(sp1_distr, C_numer_rast, fun="last")
+#E_numer_rast <- terra::mosaic(sp1_distr, E_numer_rast, fun="last")
+
 # Define denominator (is the same for all cells)
 E_denom <- sum(1/(E_df$DQ * E_df$WEIGHT))
 C_denom <- sum(1/(C_df$DQ * C_df$WEIGHT))
@@ -78,30 +89,32 @@ C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
 presence_mask <- raster_list$species_kernel_maps$species1$raster > 0
 
 # For multiplicative risk estimates = E*C
-risk_HRA_multi <- terra::mask(C_score_raster * E_score_raster, presence_mask)
+risk_HRA_multi <- terra::mosaic((C_score_raster * E_score_raster), sp1_distr, fun="first")
+
 terra::plot(risk_HRA_multi, main="Bycatch risk (Multiplicative)")
 
 # For Euclidean risk estimattes
-risk_HRA_eucl <- terra::mask(sqrt((E_score_raster  - 1)^2 + (C_score_raster  - 1)^2), presence_mask)
+eucl_scores <- (sqrt((E_score_raster  - 1)^2 + (C_score_raster  - 1)^2))
+risk_HRA_eucl <- terra::mosaic(eucl_scores, sp1_distr, fun="first")
 terra::plot(risk_HRA_eucl, main="Bycatch risk (Euclidean)")
 
-# Now we need to reclassify our raster to 1-3 scores
-re_mat_HRA_eucl <- reclass_matrix(risk_HRA_eucl, n_classes = 3, exclude_lowest = FALSE)
-risk_HRA__eucl_reclass <- terra::classify(risk_HRA_eucl, re_mat_HRA_eucl, include.lowest=TRUE)
+# Now we need to reclassify our Euclidean raster to 1-3 scores
+re_mat_HRA_eucl <- reclass_matrix(eucl_scores, n_classes = 3, exclude_lowest = FALSE, custom_max=2.828427)
+risk_HRA_eucl_reclass <- terra::classify(risk_HRA_eucl, re_mat_HRA_eucl, include.lowest=TRUE)
 
 # plot to check
-terra::plot(risk_HRA__eucl_reclass, main="Bycatch risk (1–3)")
+terra::plot(risk_HRA_eucl_reclass, main="Bycatch risk (1–3)")
 
 # Generate summary statistics
 library(dplyr)
 summarize_hra <- function(E_raster,
                           C_raster,
-                          R_raster) {
+                          R_raster,
+                          R_reclass_raster) {
 
-  s <- c(E_raster, C_raster, R_raster)
-  names(s) <- c("E", "C", "R")
+  s <- c(E_raster, C_raster, R_raster, R_reclass_raster)
+  names(s) <- c("E", "C", "R", "R_reclass")
   df <- as.data.frame(s, na.rm = FALSE)
-  df[is.na(df)] <- 0
 
   summary_df <- df %>%
     summarise(
@@ -115,41 +128,20 @@ summarize_hra <- function(E_raster,
       R_max   = max(R,   na.rm = TRUE),
       R_mean  = mean(R,  na.rm = TRUE),
       total_cells = n(),
-      `R%low` = sum(R == 1, na.rm = TRUE) / total_cells * 100,
-      `R%medium` = sum(R == 2, na.rm = TRUE) / total_cells * 100,
-      `R%high` = sum(R == 3, na.rm = TRUE) / total_cells * 100,
-      `R%None` = sum(R == 0) / total_cells * 100
+      `R%high` = sum(R_reclass == 3, na.rm = TRUE) / total_cells * 100,
+      `R%medium` = sum(R_reclass == 2, na.rm = TRUE) / total_cells * 100,
+      `R%low` = sum(R_reclass == 1, na.rm = TRUE) / total_cells * 100,
+      `R%None` = sum(R_reclass == 0) / total_cells * 100
     )
   return(as.data.frame(summary_df, check.names = FALSE))
 }
 
-summarize_hra(E_score_raster, C_score_raster, risk_HRA__eucl_reclass)
+# Include areas where risk is zero (species occurr but no risk) in E and C score rasters
+E_score_raster_z <- terra::mosaic(E_score_raster, sp1_distr, fun="first")
+C_score_raster_z <- terra::mosaic(C_score_raster, sp1_distr, fun="first")
+
+summarize_hra(E_score_raster_z, C_score_raster_z, risk_HRA_eucl, risk_HRA_eucl_reclass)
 
 export_maps(raster_list, "C:/Users/gusma/Documents/research/test_hra/maps")
 
-sp_rast <- raster_list$species_kernel_maps$species1$raster
-sp_occ_rast <- sp_rast > 0
-sp_occ_poly <- terra::as.polygons(sp_occ_rast, dissolve = TRUE, values = TRUE)
-value_col <- names(sp_occ_poly)[1]
-sp_occ_poly <- sp_occ_poly[sp_occ_poly[[value_col]] == 1, ]
-sp_occ_sf <- sf::st_as_sf(sp_occ_poly)
-
-sf::st_write(sp_occ_sf,
-         "C:/Users/gusma/Documents/research/test_hra/spp_occ/spp_occ.shp",
-         driver = "ESRI Shapefile",
-         delete_layer = TRUE)
-
-stre_rast <- raster_list$stressor_kernel_maps$stressor1$raster
-stre_occ_rast <- stre_rast > 0
-stre_occ_poly <- terra::as.polygons(stre_occ_rast, dissolve = TRUE, values = TRUE)
-value_col <- names(stre_occ_poly)[1]
-stre_occ_poly <- stre_occ_poly[stre_occ_poly[[value_col]] == 1, ]
-stre_occ_sf <- sf::st_as_sf(stre_occ_poly)
-
-sf::st_write(stre_occ_sf,
-         "C:/Users/gusma/Documents/research/test_hra/stress_occ/stres_occ.shp",
-         driver = "ESRI Shapefile",
-         delete_layer = TRUE)
-
-terra::plot(raster_list$overlap_maps$species1$stressor1$raster)
 

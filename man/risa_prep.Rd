@@ -9,7 +9,7 @@ risa_prep(
   y,
   area = NULL,
   n_classes = 3,
-  output_layer_type = "shp",
+  output_layer_type = "both",
   radius = NULL,
   output_decimal_crs = FALSE
 )

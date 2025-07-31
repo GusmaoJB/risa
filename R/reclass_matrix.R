@@ -30,7 +30,7 @@
 #' rec_mt_all <- reclass_matrix(r, exclude_lowest = FALSE) # with all values
 #' rec_mt_all
 #' @export
-reclass_matrix <- function(raster, n_classes = 3, exclude_lowest = TRUE) {
+reclass_matrix <- function(raster, n_classes = 3, exclude_lowest = TRUE, custom_max = NULL) {
   # 1. input checks
   if (!is.numeric(n_classes) ||
       n_classes %% 1 != 0 ||
@@ -42,7 +42,7 @@ reclass_matrix <- function(raster, n_classes = 3, exclude_lowest = TRUE) {
   # 2. pull out the values
   vals    <- values(raster, na.rm = TRUE)
   min_val <- min(vals, na.rm = TRUE)
-  max_val <- max(vals, na.rm = TRUE)
+  max_val <- ifelse(custom_max = NULL, max(vals, na.rm = TRUE), custom_max)
   val_05  <- 0.05 * max_val
 
   # 3. set the break bounds

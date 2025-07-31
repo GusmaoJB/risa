@@ -55,7 +55,7 @@
 #' plot(risa_maps$overlap_maps$sp2$gillnet, add = TRUE, col=c("yellow", "orange", "red"))
 #' @export
 risa_prep <- function(x, y, area = NULL, n_classes = 3,
-                      output_layer_type = "shp", radius = NULL,
+                      output_layer_type = "both", radius = NULL,
                       output_decimal_crs = FALSE) {
 
   # Checking x and y
@@ -118,6 +118,10 @@ risa_prep <- function(x, y, area = NULL, n_classes = 3,
     })
   }
 
+  # Create distribution layers for species and stressors
+  spp_distribution_list <- generate_kernel_list(spp_list_shp, area, n_classes=1, radius, output_decimal_crs)
+  str_distribution_list <- generate_kernel_list(stressor_list_shp, area, n_classes=1, radius, output_decimal_crs)
+
   # Create Kernels
   spp_kernel_list <- generate_kernel_list(spp_list_shp, area, n_classes, radius, output_decimal_crs)
   stressor_kernel_list <- generate_kernel_list(stressor_list_shp, area, n_classes, radius, output_decimal_crs)
@@ -136,8 +140,8 @@ risa_prep <- function(x, y, area = NULL, n_classes = 3,
   })
 
   # Output
-  all_maps <- list(spp_kernel_list, stressor_kernel_list, overlap_maps_list, area)
-  names(all_maps) <- c("species_kernel_maps", "stressor_kernel_maps", "overlap_maps", "area_of_interest")
+  all_maps <- list(spp_distribution_list, str_distribution_list, spp_kernel_list, stressor_kernel_list, overlap_maps_list, area)
+  names(all_maps) <- c("species_distributions", "stressor_distributions", "species_kernel_maps", "stressor_kernel_maps", "overlap_maps", "area_of_interest")
   class(all_maps) <- c("risa", class(all_maps))
   return(all_maps)
 }

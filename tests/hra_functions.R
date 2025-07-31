@@ -1,14 +1,14 @@
 # Function to perform habitat risk assessment (HRA)
 
 # Creating test data
-species1 <- data.frame(long = rnorm(80, 0, 10),
-                       lat = rnorm(80, 0, 10), species = "species1")
+species1 <- data.frame(long = rnorm(80, 0, 2),
+                       lat = rnorm(80, 0, 2), species = "species1")
 
-stressor1 <- data.frame(long = rnorm(100, 0, 5),
-                        lat = rnorm(100, 0, 10), stressor = "stressor1")
+stressor1 <- data.frame(long = rnorm(100, 0, 1),
+                        lat = rnorm(100, 0, 2), stressor = "stressor1")
 
 # Create kernel maps of species and stressor distributions and overlap maps
-raster_list <- risa_prep(species1, stressor1, output_layer_type = "raster")
+raster_list <- risa_prep(species1, stressor1, output_layer_type = "both")
 
 # Loand example data and reshape for analysis
 path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
@@ -78,19 +78,19 @@ C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
 presence_mask <- raster_list$species_kernel_maps$species1$raster > 0
 
 # For multiplicative risk estimates = E*C
-risk_HRA_multi <- mask(C_score_raster * E_score_raster, presence_mask)
-plot(risk_HRA_multi, main="Bycatch risk (Multiplicative)")
+risk_HRA_multi <- terra::mask(C_score_raster * E_score_raster, presence_mask)
+terra::plot(risk_HRA_multi, main="Bycatch risk (Multiplicative)")
 
 # For Euclidean risk estimattes
-risk_HRA_eucl <- mask(sqrt((E_score_raster  - 1)^2 + (C_score_raster  - 1)^2), presence_mask)
-plot(risk_HRA_eucl, main="Bycatch risk (Euclidean)")
+risk_HRA_eucl <- terra::mask(sqrt((E_score_raster  - 1)^2 + (C_score_raster  - 1)^2), presence_mask)
+terra::plot(risk_HRA_eucl, main="Bycatch risk (Euclidean)")
 
 # Now we need to reclassify our raster to 1-3 scores
 re_mat_HRA_eucl <- reclass_matrix(risk_HRA_eucl, n_classes = 3, exclude_lowest = FALSE)
-risk_HRA__eucl_reclass <- classify(risk_HRA_eucl, re_mat_HRA_eucl, include.lowest=TRUE)
+risk_HRA__eucl_reclass <- terra::classify(risk_HRA_eucl, re_mat_HRA_eucl, include.lowest=TRUE)
 
 # plot to check
-plot(risk_HRA__eucl_reclass, main="Bycatch risk (1–3)")
+terra::plot(risk_HRA__eucl_reclass, main="Bycatch risk (1–3)")
 
 # Generate summary statistics
 library(dplyr)
@@ -124,3 +124,32 @@ summarize_hra <- function(E_raster,
 }
 
 summarize_hra(E_score_raster, C_score_raster, risk_HRA__eucl_reclass)
+
+export_maps(raster_list, "C:/Users/gusma/Documents/research/test_hra/maps")
+
+sp_rast <- raster_list$species_kernel_maps$species1$raster
+sp_occ_rast <- sp_rast > 0
+sp_occ_poly <- terra::as.polygons(sp_occ_rast, dissolve = TRUE, values = TRUE)
+value_col <- names(sp_occ_poly)[1]
+sp_occ_poly <- sp_occ_poly[sp_occ_poly[[value_col]] == 1, ]
+sp_occ_sf <- sf::st_as_sf(sp_occ_poly)
+
+sf::st_write(sp_occ_sf,
+         "C:/Users/gusma/Documents/research/test_hra/spp_occ/spp_occ.shp",
+         driver = "ESRI Shapefile",
+         delete_layer = TRUE)
+
+stre_rast <- raster_list$stressor_kernel_maps$stressor1$raster
+stre_occ_rast <- stre_rast > 0
+stre_occ_poly <- terra::as.polygons(stre_occ_rast, dissolve = TRUE, values = TRUE)
+value_col <- names(stre_occ_poly)[1]
+stre_occ_poly <- stre_occ_poly[stre_occ_poly[[value_col]] == 1, ]
+stre_occ_sf <- sf::st_as_sf(stre_occ_poly)
+
+sf::st_write(stre_occ_sf,
+         "C:/Users/gusma/Documents/research/test_hra/stress_occ/stres_occ.shp",
+         driver = "ESRI Shapefile",
+         delete_layer = TRUE)
+
+terra::plot(raster_list$overlap_maps$species1$stressor1$raster)
+

@@ -4,7 +4,7 @@
 \alias{reclass_matrix}
 \title{Generate reclassification matrix for raster values}
 \usage{
-reclass_matrix(raster, n_classes = 3, exclude_lowest = TRUE)
+reclass_matrix(raster, n_classes = 3, exclude_lowest = TRUE, custom_max = NULL)
 }
 \arguments{
 \item{raster}{A `SpatRaster` object from `terra`.}
@@ -12,6 +12,8 @@ reclass_matrix(raster, n_classes = 3, exclude_lowest = TRUE)
 \item{n_classes}{Integer 1–10 number of classes.}
 
 \item{exclude_lowest}{Logical; if `TRUE`, values below 5 percent of max are mapped to `NA`.}
+
+\item{custom_max}{A numeric value that defines the max value set for the new classification.}
 }
 \value{
 A numeric matrix with columns `from`, `to`, and `class` for use with `terra::classify()`.
@@ -26,14 +28,14 @@ m <- matrix(rep(c(0.01,2,3,4,5), 5), ncol = 5, byrow = TRUE)
 coords <- data.frame(long = c(1,2,3,4,5), lat = c(1,2,3,4,5))
 xres <- diff(coords$long)[1]
 yres <- diff(coords$lat)[1]
-e <- ext(min(coords$long) - xres/2,
+e <- terra::ext(min(coords$long) - xres/2,
          max(coords$long) + xres/2,
          min(coords$lat) - yres/2,
          max(coords$lat) + yres/2)
 r <- rast(nrows = nrow(m),
           ncols = ncol(m),
           ext = e, crs = "")
-values(r) <- as.vector(m)
+terra::values(r) <- as.vector(m)
 plot(r)
 
 # Create reclassification matrix

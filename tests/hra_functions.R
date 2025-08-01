@@ -20,9 +20,6 @@ criteria <- crit_list[[1]]
 criteria <- criteria[!criteria$STRESSOR == "stressor2",]
 criteria <- cbind.data.frame(SPECIES = c(rep("species1", dim(criteria)[1])), criteria)
 
-criteria[,c("RATING", "DQ", "WEIGHT")] <- ifelse(criteria[,c("RATING", "DQ", "WEIGHT")] == 2, 3, NA)
-
-
 # Split consequence (C) and exposure (E)
 C_df <- criteria[criteria$`E/C` == "C",]
 E_df <- criteria[criteria$`E/C` == "E",]
@@ -74,9 +71,6 @@ terra::plot(E_numer_rast)
 sp1_distr <- raster_list$species_distributions$species1$raster
 sp1_distr <- terra::ifel(!is.na(sp1_distr),0,NA)
 
-#C_numer_rast <- terra::mosaic(sp1_distr, C_numer_rast, fun="last")
-#E_numer_rast <- terra::mosaic(sp1_distr, E_numer_rast, fun="last")
-
 # Define denominator (is the same for all cells)
 E_denom <- sum(1/(E_df$DQ * E_df$WEIGHT))
 C_denom <- sum(1/(C_df$DQ * C_df$WEIGHT))
@@ -99,49 +93,56 @@ risk_HRA_eucl <- terra::mosaic(eucl_scores, sp1_distr, fun="first")
 terra::plot(risk_HRA_eucl, main="Bycatch risk (Euclidean)")
 
 # Now we need to reclassify our Euclidean raster to 1-3 scores
-re_mat_HRA_eucl <- reclass_matrix(eucl_scores, n_classes = 3, exclude_lowest = FALSE, custom_max=2.828427)
-risk_HRA_eucl_reclass <- terra::classify(risk_HRA_eucl, re_mat_HRA_eucl, include.lowest=TRUE)
+n_classes <- 3
+breaks <- seq(0.001, 2.828427, length.out = n_classes + 1)
+
+mat <- NULL
+
+for (i in seq_len(n_classes)) {
+  from  <- breaks[i]
+  to <- if (i < length(breaks)) breaks[i + 1] else Inf
+  cls <- i
+  mat <- rbind(mat, c(from, to, cls))
+}
+
+colnames(mat) <- c("from", "to", "class")
+
+terra::plot(risk_HRA_eucl)
+risk_HRA_eucl_reclass <- terra::classify(risk_HRA_eucl, mat, include.lowest=TRUE)
 
 # plot to check
 terra::plot(risk_HRA_eucl_reclass, main="Bycatch risk (1–3)")
 
 # Generate summary statistics
-library(dplyr)
-summarize_hra <- function(E_raster,
-                          C_raster,
-                          R_raster,
-                          R_reclass_raster) {
+s <- c(E_score_raster_z, C_score_raster_z, risk_HRA_eucl, risk_HRA_eucl_reclass)
+names(s) <- c("E", "C", "R", "R_reclass")
+df <- as.data.frame(s, na.rm = FALSE)
+total_cells <- sum(df$R_reclass >= 0, na.rm=TRUE)
 
-  s <- c(E_raster, C_raster, R_raster, R_reclass_raster)
-  names(s) <- c("E", "C", "R", "R_reclass")
-  df <- as.data.frame(s, na.rm = FALSE)
-
-  summary_df <- df %>%
-    summarise(
-      E_min   = min(E,   na.rm = TRUE),
-      E_max   = max(E,   na.rm = TRUE),
-      E_mean  = mean(E,  na.rm = TRUE),
-      C_min   = min(C,   na.rm = TRUE),
-      C_max   = max(C,   na.rm = TRUE),
-      C_mean  = mean(C,  na.rm = TRUE),
-      R_min   = min(R,   na.rm = TRUE),
-      R_max   = max(R,   na.rm = TRUE),
-      R_mean  = mean(R,  na.rm = TRUE),
-      total_cells = n(),
-      `R%high` = sum(R_reclass == 3, na.rm = TRUE) / total_cells * 100,
-      `R%medium` = sum(R_reclass == 2, na.rm = TRUE) / total_cells * 100,
-      `R%low` = sum(R_reclass == 1, na.rm = TRUE) / total_cells * 100,
-      `R%None` = sum(R_reclass == 0) / total_cells * 100
-    )
-  return(as.data.frame(summary_df, check.names = FALSE))
-}
+data.frame(
+  E_min   = min(df$E,   na.rm = TRUE),
+  E_max   = max(df$E,   na.rm = TRUE),
+  E_mean  = mean(df$E,  na.rm = TRUE),
+  C_min   = min(df$C,   na.rm = TRUE),
+  C_max   = max(df$C,   na.rm = TRUE),
+  C_mean  = mean(df$C,  na.rm = TRUE),
+  R_min   = min(df$R,   na.rm = TRUE),
+  R_max   = max(df$R,   na.rm = TRUE),
+  R_mean  = mean(df$R,  na.rm = TRUE),
+  `R%high` = sum(df$R_reclass == 3, na.rm = TRUE) / total_cells * 100,
+  `R%medium` = sum(df$R_reclass == 2, na.rm = TRUE) / total_cells * 100,
+  `R%low` = sum(df$R_reclass == 1, na.rm = TRUE) / total_cells * 100,
+  `R%None` = sum(df$R_reclass == 0, na.rm = TRUE) / total_cells * 100)
 
 # Include areas where risk is zero (species occurr but no risk) in E and C score rasters
 E_score_raster_z <- terra::mosaic(E_score_raster, sp1_distr, fun="first")
 C_score_raster_z <- terra::mosaic(C_score_raster, sp1_distr, fun="first")
 
-summarize_hra(E_score_raster_z, C_score_raster_z, risk_HRA_eucl, risk_HRA_eucl_reclass)
 
-export_maps(raster_list, "C:/Users/gusma/Documents/research/test_hra/maps")
+
+
+
+
+
 
 

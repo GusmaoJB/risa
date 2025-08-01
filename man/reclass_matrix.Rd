@@ -4,7 +4,7 @@
 \alias{reclass_matrix}
 \title{Generate reclassification matrix for raster values}
 \usage{
-reclass_matrix(raster, n_classes = 3, exclude_lowest = TRUE, custom_max = NULL)
+reclass_matrix(raster, n_classes = 3, exclude_lowest = TRUE)
 }
 \arguments{
 \item{raster}{A `SpatRaster` object from `terra`.}
@@ -12,8 +12,6 @@ reclass_matrix(raster, n_classes = 3, exclude_lowest = TRUE, custom_max = NULL)
 \item{n_classes}{Integer 1–10 number of classes.}
 
 \item{exclude_lowest}{Logical; if `TRUE`, values below 5 percent of max are mapped to `NA`.}
-
-\item{custom_max}{A numeric value that defines the max value set for the new classification.}
 }
 \value{
 A numeric matrix with columns `from`, `to`, and `class` for use with `terra::classify()`.

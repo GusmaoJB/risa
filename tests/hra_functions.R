@@ -146,3 +146,146 @@ C_score_raster_z <- terra::mosaic(C_score_raster, sp1_distr, fun="first")
 
 
 
+risa <- function(rasters, criteria_csv, equation=c("euclidean", "multiplicative")) {
+  criteria <- criteria_reshape(criteria_csv)
+
+  # Split consequence (C) and exposure (E)
+  C_df <- criteria[criteria$`E/C` == "C",]
+  E_df <- criteria[criteria$`E/C` == "E",]
+
+  C_df$DQ <- as.integer(C_df$DQ)
+  C_df$WEIGHT <- as.integer(C_df$WEIGHT)
+
+  E_df$DQ <- as.integer(E_df$DQ)
+  E_df$WEIGHT <- as.integer(E_df$WEIGHT)
+
+  # Define which rasters correspond to your mapped‐criteria names
+  raster_mapping_C <- list(
+    intensity = raster_list$stressor_kernel_maps$stressor1$raster
+  )
+  raster_mapping_E <- list(
+    likelihood_of_interaction = raster_list$overlap_maps$species1$stressor1$raster
+  )
+
+  # Select constant criteria (with rating), and divide value by DQ * Weight
+  E_const <- E_df[!is.na(E_df$RATING),]
+  C_const <- C_df[!is.na(C_df$RATING),]
+
+  E_numer_const <- sum(E_const$RATING / (E_const$DQ * E_const$WEIGHT))
+  C_numer_const <- sum(C_const$RATING / (C_const$DQ * C_const$WEIGHT))
+
+  # Select mapped criteria (RATING == NA), then sum over raster/(DQ*WEIGHT)
+  E_mapped <- E_df[is.na(E_df$RATING),]
+  C_mapped <- C_df[is.na(C_df$RATING),]
+
+  C_numer_rast <- 0
+  for(i in seq_len(nrow(C_mapped))){
+    crit <- E_mapped[i,]
+    attr_name <- names(crit)[3]
+    r <- raster_mapping_C[[1]]
+    C_numer_rast <- C_numer_rast + (r / (crit$DQ * crit$WEIGHT))
+  }
+
+  E_numer_rast <- 0
+  for(i in seq_len(nrow(E_mapped))){
+    crit <- E_mapped[i,]
+    attr_name <- names(crit)[3]
+    r <- raster_mapping_E[[1]]
+    E_numer_rast <- E_numer_rast + (r / (crit$DQ * crit$WEIGHT))
+  }
+
+  terra::plot(C_numer_rast)
+  terra::plot(E_numer_rast)
+
+  sp1_distr <- raster_list$species_distributions$species1$raster
+  sp1_distr <- terra::ifel(!is.na(sp1_distr),0,NA)
+
+  # Define denominator (is the same for all cells)
+  E_denom <- sum(1/(E_df$DQ * E_df$WEIGHT))
+  C_denom <- sum(1/(C_df$DQ * C_df$WEIGHT))
+
+  # Final score raster
+  E_score_raster <- (E_numer_const + E_numer_rast) / E_denom
+  C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
+
+  # Mask to where the species is actually present (>0) and compute risk
+  presence_mask <- raster_list$species_kernel_maps$species1$raster > 0
+
+  # For multiplicative risk estimates = E*C
+  risk_HRA_multi <- terra::mosaic((C_score_raster * E_score_raster), sp1_distr, fun="first")
+
+  terra::plot(risk_HRA_multi, main="Bycatch risk (Multiplicative)")
+
+  # For Euclidean risk estimattes
+  eucl_scores <- (sqrt((E_score_raster  - 1)^2 + (C_score_raster  - 1)^2))
+  risk_HRA_eucl <- terra::mosaic(eucl_scores, sp1_distr, fun="first")
+  terra::plot(risk_HRA_eucl, main="Bycatch risk (Euclidean)")
+
+  # Now we need to reclassify our Euclidean raster to 1-3 scores
+  n_classes <- 3
+  breaks <- seq(0.001, 2.828427, length.out = n_classes + 1)
+
+  mat <- NULL
+
+  for (i in seq_len(n_classes)) {
+    from  <- breaks[i]
+    to <- if (i < length(breaks)) breaks[i + 1] else Inf
+    cls <- i
+    mat <- rbind(mat, c(from, to, cls))
+  }
+
+  colnames(mat) <- c("from", "to", "class")
+
+  terra::plot(risk_HRA_eucl)
+  risk_HRA_eucl_reclass <- terra::classify(risk_HRA_eucl, mat, include.lowest=TRUE)
+
+
+
+}
+
+
+
+
+# Split consequence (C) and exposure (E)
+C_df <- criteria[criteria$`E/C` == "C",]
+E_df <- criteria[criteria$`E/C` == "E",]
+
+as.integer(C_df$DQ)
+
+# Compute criteria block
+compute_crit_block <- function(df) {
+  df$DQ <- as.integer(df$DQ)
+  df$WEIGHT <- as.integer(df$WEIGHT)
+
+  # Define which rasters correspond to your mapped‐criteria names
+  raster_mapping_C <- list(
+    intensity = raster_list$stressor_kernel_maps$stressor1$raster
+  )
+
+
+  # Select constant criteria (with rating), and divide value by DQ * Weight
+  const <- df[!is.na(df$RATING),]
+  numer_const <- sum(const$RATING / (const$DQ * const$WEIGHT))
+
+  # Select mapped criteria (RATING == NA), then sum over raster/(DQ*WEIGHT)
+  mapped <- df[is.na(df$RATING),]
+
+  numer_rast <- 0
+  for(i in seq_len(nrow(mapped))){
+    crit <- E_mapped[i,]
+    attr_name <- names(crit)[3]
+    r <- raster_mapping_C[[1]]
+    numer_rast <- numer_rast + (r / (crit$DQ * crit$WEIGHT))
+  }
+
+  # Define denominator (is the same for all cells)
+  denom <- sum(1/(df$DQ * df$WEIGHT))
+
+  # Final score raster
+  score_raster <- (numer_const + numer_rast) / denom
+  return(score_raster)
+}
+
+test <- compute_crit_block(C_df)
+
+

@@ -1,4 +1,4 @@
-habitat_risk_assessment <- function(raster_list, species_distr, criteria, equation = c("euclidean", "multiplicative"), r_max = 3) {
+hra <- function(raster_list, species_distr, criteria, equation = c("euclidean", "multiplicative"), r_max = 3, n_overlap = NULL) {
 
   if (all(!names(criteria) %in% c("STRESSOR", "ATTRIBUTES", "RATING", "DQ", "WEIGHT", "E/C"))){
     stop("Criteria table must have the following columns: 'STRESSOR', 'ATTRIBUTES', 'RATING', 'DQ', 'WEIGHT', and 'E/C'")
@@ -11,6 +11,10 @@ habitat_risk_assessment <- function(raster_list, species_distr, criteria, equati
   equation <- match.arg(equation)
   stressors <- unique(criteria$STRESSOR)
   stressors <- stressors[!stressors %in% c(NA, "", "NA")]
+
+  if (is.null(n_overlap)) {
+    n_overlap <- length(stressors)
+  }
 
   if (all(!names(raster_list) == stressors)) {
     stop("The list names in 'raster_list' must match the stressor names described in the 'criteria' table")
@@ -103,8 +107,8 @@ habitat_risk_assessment <- function(raster_list, species_distr, criteria, equati
   # Calculate cumulative risk (sum across all stressors)
   total_risk <- Reduce("+", lapply(risk_results, function(x) x$Risk_map_raw))
   total_risk_classified <- terra::ifel(total_risk == 0, 0,
-                                    terra::ifel(total_risk < (1/3)*m_jkl*length(stressors), 1,
-                                                terra::ifel(total_risk < (2/3)*m_jkl*length(stressors), 2, 3)))
+                                    terra::ifel(total_risk < (1/3)*m_jkl*n_overlap, 1,
+                                                terra::ifel(total_risk < (2/3)*m_jkl*n_overlap, 2, 3)))
 
   risk_results$total_raw <- total_risk
   risk_results$total <- total_risk_classified
@@ -164,3 +168,29 @@ get_stats <- function(list) {
   return(output_df)
 }
 
+
+many_hra <- function(raster_list, dist_list, criteria, equation = c("euclidean", "multiplicative"), r_max = 3, n_overlap = NULL) {
+  if (!is.list(raster_list)) {
+    stop("'raster_list' must be a list of list named after each species/habitat")
+  }
+  if (!is.list(dist_list)) {
+    stop("'dist_list' must' be a list of list named after each species/habitat")
+  }
+  if (all(!names(criteria) %in% c("SPECIES", "STRESSOR", "ATTRIBUTES", "RATING", "DQ", "WEIGHT", "E/C"))){
+    stop("Criteria table must have the following columns: 'SPECIES', 'STRESSOR', 'ATTRIBUTES', 'RATING', 'DQ', 'WEIGHT', and 'E/C'")
+  }
+  equation <- match.arg(equation)
+  stressors <- unique(criteria$STRESSOR)
+  stressors <- stressors[!stressors %in% c(NA, "", "NA")]
+
+  if (is.null(n_overlap)) {
+    n_overlap <- length(stressors)
+  }
+
+  results <- list()
+
+  for (species in names(raster_list)) {
+    results[[species]] <- hra(raster_list[[species]], dist_list[[species]], criteria[criteria$SPECIES == species,], equation, r_max, n_overlap)
+  }
+
+}

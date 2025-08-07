@@ -65,9 +65,6 @@ for(i in seq_len(nrow(E_mapped))){
   E_numer_rast <- E_numer_rast + (r / (crit$DQ * crit$WEIGHT))
 }
 
-terra::plot(C_numer_rast)
-terra::plot(E_numer_rast)
-
 sp1_distr <- raster_list$species_distributions$species1$raster
 sp1_distr <- terra::ifel(!is.na(sp1_distr),0,NA)
 
@@ -78,6 +75,9 @@ C_denom <- sum(1/(C_df$DQ * C_df$WEIGHT))
 # Final score raster
 E_score_raster <- (E_numer_const + E_numer_rast) / E_denom
 C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
+
+terra::plot(E_score_raster)
+terra::plot(C_score_raster)
 
 # Mask to where the species is actually present (>0) and compute risk
 presence_mask <- raster_list$species_kernel_maps$species1$raster > 0

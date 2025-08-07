@@ -33,34 +33,32 @@ habitat_risk_assessment <- function(raster_list, criteria, equation = c("euclide
     raster_mapping_C <- raster_list$stressor_kernel_maps[[stressor]]$raster
     raster_mapping_E <- raster_list$overlap_maps[[1]][[stressor]]$raster
 
-    # Normalize and aggregate C and E scores
-    C_score_raster <- raster_mapping_C / terra::global(raster_mapping_C, "max", na.rm=TRUE)[[1]]
-    E_score_raster <- raster_mapping_E / terra::global(raster_mapping_E, "max", na.rm=TRUE)[[1]]
+    # Exposure (E) and Consequence (C) calculation per InVEST
+    E_numerator <- raster_mapping_E / sum(E_df$DQ * E_df$WEIGHT)
+    E_denominator <- sum(1 / (E_df$DQ * E_df$WEIGHT))
+    E_score_raster <- E_numerator / E_denominator
 
-    # Apply weighting
-    C_weighted <- sum(C_df$WEIGHT * C_df$DQ, na.rm=TRUE)
-    E_weighted <- sum(E_df$WEIGHT * E_df$DQ, na.rm=TRUE)
+    C_numerator <- raster_mapping_C / sum(C_df$DQ * C_df$WEIGHT)
+    C_denominator <- sum(1 / (C_df$DQ * C_df$WEIGHT))
+    C_score_raster <- C_numerator / C_denominator
 
-    C_score_raster <- (C_score_raster * C_weighted) / sum(C_df$WEIGHT, na.rm=TRUE)
-    E_score_raster <- (E_score_raster * E_weighted) / sum(E_df$WEIGHT, na.rm=TRUE)
-
-    # Converting species distributions into a raster with zeros
-    sp_distr_zeros <- terra::ifel(!is.na(sp_distr), 0, NA)
+    # Converting species distributions into masks for our outputs
+    #sp_distr_zeros <- terra::ifel(!is.na(sp_distr), 0, NA)
 
     # Setting nozes with zero E and C criteria
-    C_score_raster_map <- terra::mosaic(C_score_raster, sp_distr_zeros, fun="first")
-    E_score_raster_map <- terra::mosaic(E_score_raster, sp_distr_zeros, fun="first")
+    #C_score_raster_map <- terra::mosaic(terra::mask(C_score_raster, sp_distr), sp_distr_zeros, fun="first")
+    #E_score_raster_map <- terra::mosaic(E_score_raster, sp_distr_zeros, fun="first")
 
     # Compute risk scores
     r_max <- n_classes
     if (equation == "multiplicative") {
       m_jkl <- r_max^2
-      risk_scores <- C_score_raster * E_score_raster * sp_presence
+      risk_scores <- C_score_raster * E_score_raster
       risk_scores <- terra::mosaic(risk_scores, sp_distr_zeros, fun="first")
     } else if (equation == "euclidean") {
       m_jkl <- sqrt(2 * (r_max - 1)^2)
-      risk_scores <- sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
-      risk_scores <- terra::mosaic(risk_scores, sp_distr_zeros, fun="first")
+      risk_scores <- sqrt((E_score_raster_map)^2 + (C_score_raster_map)^2)
+      #risk_scores <- terra::mosaic(risk_scores, sp_distr_zeros, fun="first")
     }
 
     # Classify using InVEST criteria
@@ -69,8 +67,8 @@ habitat_risk_assessment <- function(raster_list, criteria, equation = c("euclide
                                                terra::ifel(risk_scores < (2/3)*m_jkl, 2, 3)))
 
     risk_results[[stressor]] <- list(
-      E_criteria = E_score_raster_map,
-      C_criteria = C_score_raster_map,
+      E_criteria = E_score_raster,
+      C_criteria = C_score_raster,
       Risk_map_raw = risk_scores,
       Risk_map = risk_classified
     )
@@ -89,6 +87,7 @@ habitat_risk_assessment <- function(raster_list, criteria, equation = c("euclide
 
 
 # Creating test data
+set.seed(12)
 spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
                            lat = rnorm(80, 0, 10), species = "species1"))
 str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
@@ -99,27 +98,32 @@ str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
 # Create kernel maps of species and stressor distributions and overlap maps
 risa_maps <- risa_prep(spp_df, str_df)
 
+export_maps(risa_maps, "C:/Users/gusma/Documents/research/test_hra/maps")
+
 #Load example data
 path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
 df <- read.csv(path)
 
-#Inspect dataframe
-df[,1:8]
-
 #Reshape criteria table
 crit_list <- criteria_reshape(df)
 
-test <- habitat_risk_assessment(risa_maps, crit_list[[1]], equation = "euclidean", n_classes = 3)
+test <- habitat_risk_assessment(risa_maps, crit_list[[1]], equation = "euclidean")
+
+terra::plot(risa_maps$species_kernel_maps$species1$raster)
+terra::plot(risa_maps$stressor_kernel_maps$stressor1$raster)
+terra::plot(risa_maps$stressor_kernel_maps$stressor2$raster)
+
+terra::plot(risa_maps$overlap_maps$species1$stressor1$raster)
+terra::plot(risa_maps$overlap_maps$species1$stressor2$raster)
+
+terra::plot(sqrt(((test$stressor1$E_criteria-1)^2 + (test$stressor1$C_criteria-1)^2)))
 
 
 terra::plot(test$stressor1$E_criteria)
 terra::plot(test$stressor1$C_criteria)
-terra::plot(test$stressor2$E_criteria)
+
 terra::plot(test$stressor1$Risk_map_raw)
-terra::plot(test$stressor1$Risk_map)
 terra::plot(test$stressor2$Risk_map_raw)
+
+terra::plot(test$stressor1$Risk_map)
 terra::plot(test$stressor2$Risk_map)
-
-terra::plot(test$total)
-
-crit_list

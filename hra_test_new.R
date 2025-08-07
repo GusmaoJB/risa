@@ -24,7 +24,7 @@ habitat_risk_assessment <- function(raster_list, species_distr, criteria, equati
   sp_presence <- terra::ifel(!is.na(sp_distr), 1, NA)
 
   for (stressor in stressors) {
-    crit_stressor <- criteria[criteria$STRESSOR == stressor,]
+    crit_stressor <- criteria[criteria$STRESSOR %in% c(NA, "NA", "", stressor),]
 
     # Split consequence (C) and exposure (E)
     C_df <- crit_stressor[crit_stressor$`E/C` == "C",]
@@ -51,13 +51,13 @@ habitat_risk_assessment <- function(raster_list, species_distr, criteria, equati
     E_numer_rast <- 0
     for (crit in seq_len(nrow(E_mapped))) {
       raster_mapping_E <- raster_list[[stressor]][[E_mapped$ATTRIBUTES[crit]]]
-      E_numer_rast <- E_numer_rast + (raster_mapping_E / (E_mapped$DQ[crit] * E_mapped$WEIGHT)[crit])
+      E_numer_rast <- E_numer_rast + (raster_mapping_E / (E_mapped$DQ[crit] * E_mapped$WEIGHT[crit]))
     }
 
     C_numer_rast <- 0
     for (crit in seq_len(nrow(C_mapped))) {
       raster_mapping_C <- raster_list[[stressor]][[C_mapped$ATTRIBUTES[crit]]]
-      C_numer_rast <- C_numer_rast + (raster_mapping_C / (C_mapped$DQ[crit] * C_mapped$WEIGHT)[crit])
+      C_numer_rast <- C_numer_rast + (raster_mapping_C / (C_mapped$DQ[crit] * C_mapped$WEIGHT[crit]))
     }
 
     # Define denominator (is the same for all cells)
@@ -71,10 +71,9 @@ habitat_risk_assessment <- function(raster_list, species_distr, criteria, equati
     # Converting species distributions with zeros (necessary for outputs)
     sp_distr_zeros <- terra::ifel(!is.na(sp_distr), 0, NA)
 
-
     # Setting layer with zero E and C criteria
-    C_score_raster_map <- terra::mosaic(terra::mask(C_score_raster, sp_distr), sp_distr_zeros, fun="first")
     E_score_raster_map <- terra::mosaic(E_score_raster, sp_distr_zeros, fun="first")
+    C_score_raster_map <- terra::mosaic(terra::mask(C_score_raster, sp_distr), sp_distr_zeros, fun="first")
 
     # Compute risk scores
     if (equation == "multiplicative") {
@@ -85,14 +84,13 @@ habitat_risk_assessment <- function(raster_list, species_distr, criteria, equati
       risk_scores <- sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
     }
 
-    # Include laywer with risk zero into the risk score raster
-    print(risk_scores)
+    # Include layer with risk zero into the risk score raster
     risk_scores <- terra::mosaic(risk_scores, sp_distr_zeros, fun="first")
 
     # Classify using InVEST criteria
     risk_classified <- terra::ifel(risk_scores == 0, 0,
-                                   terra::ifel(risk_scores < (1/3)*m_jkl*2, 1,
-                                               terra::ifel(risk_scores < (2/3)*m_jkl*2, 2, 3)))
+                                   terra::ifel(risk_scores < (1/3)*m_jkl, 1,
+                                               terra::ifel(risk_scores < (2/3)*m_jkl, 2, 3)))
 
     risk_results[[stressor]] <- list(
       E_criteria = E_score_raster_map,
@@ -105,15 +103,14 @@ habitat_risk_assessment <- function(raster_list, species_distr, criteria, equati
   # Calculate cumulative risk (sum across all stressors)
   total_risk <- Reduce("+", lapply(risk_results, function(x) x$Risk_map_raw))
   total_risk_classified <- terra::ifel(total_risk == 0, 0,
-                                    terra::ifel(total_risk < (1/3)*m_jkl, 1,
-                                                terra::ifel(total_risk < (2/3)*m_jkl, 2, 3)))
+                                    terra::ifel(total_risk < (1/3)*m_jkl*length(stressors), 1,
+                                                terra::ifel(total_risk < (2/3)*m_jkl*length(stressors), 2, 3)))
 
   risk_results$total_raw <- total_risk
-  risk_results$total <- total_risk
+  risk_results$total <- total_risk_classified
 
   return(risk_results)
 }
-
 
 
 # Generate summary statistics
@@ -142,27 +139,28 @@ get_stats <- function(list) {
         `R%low` = sum(df$R_reclass == 1, na.rm = TRUE) / total_cells * 100,
         `R%None` = sum(df$R_reclass == 0, na.rm = TRUE) / total_cells * 100)
       output_df <- rbind.data.frame(output_df, stats)
-    } else {
-      output_df <- rbind.data.frame(
-        data.frame(
-          STRESSOR = "(FROM ALL STRESSORS)",
-          E_min   = min(output_df$E,   na.rm = TRUE),
-          E_max   = max(output_df$E,   na.rm = TRUE),
-          E_mean  = mean(output_df$E,  na.rm = TRUE),
-          C_min   = min(output_df$C,   na.rm = TRUE),
-          C_max   = max(output_df$C,   na.rm = TRUE),
-          C_mean  = mean(df$C,  na.rm = TRUE),
-          R_min   = min(output_df$R,   na.rm = TRUE),
-          R_max   = max(output_df$R,   na.rm = TRUE),
-          R_mean  = mean(output_df$R,  na.rm = TRUE),
-          `R%high` = sum(df$R_reclass == 3, na.rm = TRUE) / total_cells * 100,
-          `R%medium` = sum(df$R_reclass == 2, na.rm = TRUE) / total_cells * 100,
-          `R%low` = sum(df$R_reclass == 1, na.rm = TRUE) / total_cells * 100,
-          `R%None` = sum(df$R_reclass == 0, na.rm = TRUE) / total_cells * 100
-        )
-      )
     }
   }
+  total_df <- as.data.frame(list$total, na.rm = FALSE)
+  all_stressors_df <- rbind.data.frame(
+    data.frame(
+      STRESSOR = "(FROM ALL STRESSORS)",
+      E_min   = min(output_df$E_min,   na.rm = TRUE),
+      E_max   = max(output_df$E_max,   na.rm = TRUE),
+      E_mean  = mean(output_df$E_mean,  na.rm = TRUE),
+      C_min   = min(output_df$C_min,   na.rm = TRUE),
+      C_max   = max(output_df$C_max,   na.rm = TRUE),
+      C_mean  = mean(output_df$C_mean,  na.rm = TRUE),
+      R_min   = min(output_df$R_min,   na.rm = TRUE),
+      R_max   = max(output_df$R_max,   na.rm = TRUE),
+      R_mean  = mean(output_df$R_mean,  na.rm = TRUE),
+      `R%high` = sum(total_df == 3, na.rm = TRUE) / total_cells * 100,
+      `R%medium` = sum(total_df == 2, na.rm = TRUE) / total_cells * 100,
+      `R%low` = sum(total_df == 1, na.rm = TRUE) / total_cells * 100,
+      `R%None` = sum(total_df == 0, na.rm = TRUE) / total_cells * 100
+    )
+  )
+  output_df <- rbind.data.frame(all_stressors_df, output_df)
   return(output_df)
 }
 

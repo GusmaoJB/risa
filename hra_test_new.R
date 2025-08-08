@@ -1,7 +1,27 @@
 hra <- function(raster_list, species_distr, criteria, equation = c("euclidean", "multiplicative"), r_max = 3, n_overlap = NULL) {
 
+  if (!is.list(raster_list)) {
+    stop("'raster_list' must be a list of lists named after each stressor")
+  }
+
+  if (!list_depth_base(raster_list) == 2) {
+    stop("'raster_list' must have two levels of nestedness: each list of stressors should host the working rasters")
+  }
+
+  if (!is.data.frame(criteria)) {
+    stop("'criteria' must be a data.frame object.")
+  } else if (!names(criteria)[1] == "STRESSOR") {
+    message("'criteria' does not have the expected structure. Trying to reshape it with 'criteria_reshape()'...")
+    criteria <- criteria_reshape(criteria)
+    if (length(criteria) > 1) {
+      stop("Multiple habitats/species were detected. For multiple habitats/species risk estimations, use 'many_hra()'")
+    } else {
+      criteria <- criteria[[1]]
+    }
+  }
+
   if (all(!names(criteria) %in% c("STRESSOR", "ATTRIBUTES", "RATING", "DQ", "WEIGHT", "E/C"))){
-    stop("Criteria table must have the following columns: 'STRESSOR', 'ATTRIBUTES', 'RATING', 'DQ', 'WEIGHT', and 'E/C'")
+    stop("Criteria table ('criteria') must have the following columns: 'STRESSOR', 'ATTRIBUTES', 'RATING', 'DQ', 'WEIGHT', and 'E/C'")
   }
 
   if (r_max > 10 | r_max < 1) {
@@ -112,85 +132,144 @@ hra <- function(raster_list, species_distr, criteria, equation = c("euclidean", 
 
   risk_results$total_raw <- total_risk
   risk_results$total <- total_risk_classified
+  class(risk_results) <- c("risaHRA", class(risk_results))
 
   return(risk_results)
 }
 
 
-# Generate summary statistics
-get_stats <- function(list) {
-  output_df <- data.frame()
-  for (stressor in names(list)) {
-    if (is.list(list[[stressor]])){
-      rasters <- c(list[[stressor]]$E_criteria, list[[stressor]]$C_criteria,
-                   list[[stressor]]$Risk_map_raw, list[[stressor]]$Risk_map)
-      names(rasters) <- c("E", "C", "R", "R_reclass")
-      df <- as.data.frame(rasters, na.rm = FALSE)
-      total_cells <- sum(df$R_reclass >= 0, na.rm=TRUE)
-      stats <- data.frame(
-        STRESSOR = stressor,
-        E_min   = min(df$E,   na.rm = TRUE),
-        E_max   = max(df$E,   na.rm = TRUE),
-        E_mean  = mean(df$E,  na.rm = TRUE),
-        C_min   = min(df$C,   na.rm = TRUE),
-        C_max   = max(df$C,   na.rm = TRUE),
-        C_mean  = mean(df$C,  na.rm = TRUE),
-        R_min   = min(df$R,   na.rm = TRUE),
-        R_max   = max(df$R,   na.rm = TRUE),
-        R_mean  = mean(df$R,  na.rm = TRUE),
-        `R%high` = sum(df$R_reclass == 3, na.rm = TRUE) / total_cells * 100,
-        `R%medium` = sum(df$R_reclass == 2, na.rm = TRUE) / total_cells * 100,
-        `R%low` = sum(df$R_reclass == 1, na.rm = TRUE) / total_cells * 100,
-        `R%None` = sum(df$R_reclass == 0, na.rm = TRUE) / total_cells * 100)
-      output_df <- rbind.data.frame(output_df, stats)
-    }
-  }
-  total_df <- as.data.frame(list$total, na.rm = FALSE)
-  all_stressors_df <- rbind.data.frame(
-    data.frame(
-      STRESSOR = "(FROM ALL STRESSORS)",
-      E_min   = min(output_df$E_min,   na.rm = TRUE),
-      E_max   = max(output_df$E_max,   na.rm = TRUE),
-      E_mean  = mean(output_df$E_mean,  na.rm = TRUE),
-      C_min   = min(output_df$C_min,   na.rm = TRUE),
-      C_max   = max(output_df$C_max,   na.rm = TRUE),
-      C_mean  = mean(output_df$C_mean,  na.rm = TRUE),
-      R_min   = min(output_df$R_min,   na.rm = TRUE),
-      R_max   = max(output_df$R_max,   na.rm = TRUE),
-      R_mean  = mean(output_df$R_mean,  na.rm = TRUE),
-      `R%high` = sum(total_df == 3, na.rm = TRUE) / total_cells * 100,
-      `R%medium` = sum(total_df == 2, na.rm = TRUE) / total_cells * 100,
-      `R%low` = sum(total_df == 1, na.rm = TRUE) / total_cells * 100,
-      `R%None` = sum(total_df == 0, na.rm = TRUE) / total_cells * 100
-    )
-  )
-  output_df <- rbind.data.frame(all_stressors_df, output_df)
-  return(output_df)
-}
-
-
 many_hra <- function(raster_list, dist_list, criteria, equation = c("euclidean", "multiplicative"), r_max = 3, n_overlap = NULL) {
+
   if (!is.list(raster_list)) {
     stop("'raster_list' must be a list of list named after each species/habitat")
   }
+
+  if (!list_depth_base(raster_list) == 3) {
+    stop("The raster list must have three levels of nestedness: each list of species should have a list for each stressor; and each stressor list should host the working rasters")
+  }
+
   if (!is.list(dist_list)) {
     stop("'dist_list' must' be a list of list named after each species/habitat")
   }
-  if (all(!names(criteria) %in% c("SPECIES", "STRESSOR", "ATTRIBUTES", "RATING", "DQ", "WEIGHT", "E/C"))){
-    stop("Criteria table must have the following columns: 'SPECIES', 'STRESSOR', 'ATTRIBUTES', 'RATING', 'DQ', 'WEIGHT', and 'E/C'")
+
+  if (!is.list(criteria)) {
+    stop("'dist_list' must' be a list of list named after each species/habitat")
   }
+
+  if (length(criteria) == 1) {
+    stop("Only one criteria table was detected. 'criteria' must be a list of criteria tables. For single species/habitat risk estimations, use 'hra()'")
+  }
+
+  for (species in names(criteria)) {
+    if (all(!names(criteria[[species]]) %in% c("STRESSOR", "ATTRIBUTES", "RATING", "DQ", "WEIGHT", "E/C"))){
+      stop("Each criteria table must have the following columns: 'SPECIES', 'STRESSOR', 'ATTRIBUTES', 'RATING', 'DQ', 'WEIGHT', and 'E/C'")
+    }
+  }
+
   equation <- match.arg(equation)
-  stressors <- unique(criteria$STRESSOR)
+  stressors <- unique(criteria[[1]]$STRESSOR)
   stressors <- stressors[!stressors %in% c(NA, "", "NA")]
 
   if (is.null(n_overlap)) {
     n_overlap <- length(stressors)
   }
 
-  results <- list()
-
-  for (species in names(raster_list)) {
-    results[[species]] <- hra(raster_list[[species]], dist_list[[species]], criteria[criteria$SPECIES == species,], equation, r_max, n_overlap)
+  # Define parameters for risk reclassification
+  if (equation == "multiplicative") {
+    m_jkl <- r_max^2
+  } else if (equation == "euclidean") {
+    m_jkl <- sqrt(2 * (r_max - 1)^2)
   }
 
+  all_spp_dist <- spp_dist[[1]]
+  for (i in 1:length(spp_dist)) {
+    all_spp_dist <- terra::mosaic(all_spp_dist, spp_dist[[i]])
+  }
+
+  risk_results <- list()
+  ecosys_risk_raw <- terra::ifel(all_spp_dist == 1, 0, NA)
+
+  for (species in names(raster_list)) {
+    risk_results[[species]] <- hra(raster_list[[species]], dist_list[[species]], criteria[[species]], equation, r_max, n_overlap)
+    ecosys_risk_raw <- ecosys_risk_raw + terra::ifel(is.na(risk_results[[species]]$total_raw), 0, risk_results[[species]]$total_raw)
+  }
+
+  # Correcting with the number of habitats/species
+  ecosys_risk_raw <- ecosys_risk_raw / length(criteria)
+
+  # Reclassify Ecosystem Risk
+  ecosys_risk_classified <- terra::ifel(ecosys_risk_raw == 0, 0,
+                                       terra::ifel(ecosys_risk_raw < (1/3)*m_jkl*length(stressors), 1,
+                                                   terra::ifel(ecosys_risk_raw < (2/3)*m_jkl*length(stressors), 2, 3)))
+
+  risk_results$ecosys_risk_raw <- ecosys_risk_raw
+  risk_results$ecosys_risk_classified <- ecosys_risk_classified
+  class(risk_results) <- c("risaHRA", class(risk_results))
+
+  return(risk_results)
 }
+
+
+# Generate summary statistics
+get_stats <- function(risks) {
+
+  if (!inherits(risks, "risaHRA")) {
+    stop("Input must be a 'risaHRA' object.")
+  }
+
+  # Helper function to estimate stats for each stressor
+  get_stressor_stats <- function(list) {
+    output_df <- data.frame()
+    for (stressor in names(list)) {
+      if (is.list(list[[stressor]])){
+        rasters <- c(list[[stressor]]$E_criteria, list[[stressor]]$C_criteria,
+                     list[[stressor]]$Risk_map_raw, list[[stressor]]$Risk_map)
+        names(rasters) <- c("E", "C", "R", "R_reclass")
+        df <- as.data.frame(rasters, na.rm = FALSE)
+        total_cells <- sum(df$R_reclass >= 0, na.rm=TRUE)
+        stats <- data.frame(
+          STRESSOR = stressor,
+          E_min   = min(df$E,   na.rm = TRUE),
+          E_max   = max(df$E,   na.rm = TRUE),
+          E_mean  = mean(df$E,  na.rm = TRUE),
+          C_min   = min(df$C,   na.rm = TRUE),
+          C_max   = max(df$C,   na.rm = TRUE),
+          C_mean  = mean(df$C,  na.rm = TRUE),
+          R_min   = min(df$R,   na.rm = TRUE),
+          R_max   = max(df$R,   na.rm = TRUE),
+          R_mean  = mean(df$R,  na.rm = TRUE),
+          `R%high` = sum(df$R_reclass == 3, na.rm = TRUE) / total_cells * 100,
+          `R%medium` = sum(df$R_reclass == 2, na.rm = TRUE) / total_cells * 100,
+          `R%low` = sum(df$R_reclass == 1, na.rm = TRUE) / total_cells * 100,
+          `R%None` = sum(df$R_reclass == 0, na.rm = TRUE) / total_cells * 100)
+        output_df <- rbind.data.frame(output_df, stats)
+      }
+    }
+    total_df <- as.data.frame(list$total, na.rm = FALSE)
+    all_stressors_df <- rbind.data.frame(
+      data.frame(
+        STRESSOR = "(FROM ALL STRESSORS)",
+        E_min   = min(output_df$E_min,   na.rm = TRUE),
+        E_max   = max(output_df$E_max,   na.rm = TRUE),
+        E_mean  = mean(output_df$E_mean,  na.rm = TRUE),
+        C_min   = min(output_df$C_min,   na.rm = TRUE),
+        C_max   = max(output_df$C_max,   na.rm = TRUE),
+        C_mean  = mean(output_df$C_mean,  na.rm = TRUE),
+        R_min   = min(output_df$R_min,   na.rm = TRUE),
+        R_max   = max(output_df$R_max,   na.rm = TRUE),
+        R_mean  = mean(output_df$R_mean,  na.rm = TRUE),
+        `R%high` = sum(total_df == 3, na.rm = TRUE) / total_cells * 100,
+        `R%medium` = sum(total_df == 2, na.rm = TRUE) / total_cells * 100,
+        `R%low` = sum(total_df == 1, na.rm = TRUE) / total_cells * 100,
+        `R%None` = sum(total_df == 0, na.rm = TRUE) / total_cells * 100
+      )
+    )
+    output_df <- rbind.data.frame(all_stressors_df, output_df)
+    return(output_df)
+  }
+
+  if ()
+
+}
+
+

@@ -106,7 +106,7 @@ df_to_shp <- function(df) {
 #' df <- data.frame(long = c(1,2,2,4,2,5,4,6),
 #'                  lat = c(4,4,2,2,4,4,2,2),
 #'                  species=rep(c("sp1", "sp2"), each=4))
-
+#'
 #' #create vector list
 #' vec_list <- df_to_list(df)
 #' vec_list
@@ -143,4 +143,30 @@ df_to_list <- function(df) {
   names(shp_list) <- levels_vec
 
   return(shp_list)
+}
+
+
+#' Compute the nesting depth of a list
+#'
+#' Determines the maximum number of nested list layers in an R object.
+#'
+#' @param x An R object. If it is a list (possibly nested), its maximum nesting depth is returned; otherwise 0.
+#' @return An integer scalar: the depth of list nesting (0 for non‐lists, 1 for an empty list, etc.).
+#' @examples
+#' # Not a list
+#' list_depth_base(42)
+#'
+#' # Empty list
+#' list_depth_base(list())
+#'
+#' # Nested list
+#' nested <- list(a = list(b = list(c = 1)))
+#' list_depth_base(nested)
+#'
+#' @export
+list_depth_base <- function(x) {
+  if (!is.list(x) || length(x) == 0) {
+    return(if (is.list(x)) 1L else 0L)
+  }
+  1L + max(vapply(x, list_depth_base, integer(1)))
 }

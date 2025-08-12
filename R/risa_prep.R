@@ -1,4 +1,4 @@
-#' Prepare RISA kernel and overlap maps
+#' Prepare and generate maps for risk assessment analysis
 #'
 #' Generates kernel density maps for species and stressors, merges, and computes overlap within an area of interest.
 #'

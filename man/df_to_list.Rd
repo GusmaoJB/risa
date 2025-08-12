@@ -20,6 +20,7 @@ Splits data.frame rows into separate `sf` objects based on a grouping factor (co
 df <- data.frame(long = c(1,2,2,4,2,5,4,6),
                  lat = c(4,4,2,2,4,4,2,2),
                  species=rep(c("sp1", "sp2"), each=4))
+
 #create vector list
 vec_list <- df_to_list(df)
 vec_list

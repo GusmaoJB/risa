@@ -15,7 +15,7 @@ str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
 # Create kernel maps of species and stressor distributions and overlap maps
 risa_maps <- risa_prep(spp_df, str_df)
 
-export_maps(risa_maps, "C:/Users/gusma/Documents/research/test_hra/maps")
+# export_maps(risa_maps, "C:/Users/gusma/Documents/research/test_hra/maps")
 
 #Load example data
 path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
@@ -23,9 +23,7 @@ df <- read.csv(path)
 
 #Reshape criteria table
 crit_list <- criteria_reshape(df)
-
-crit_df <- crit_list[[1]]
-crit_df
+crit_list
 
 # Selecting spatially explicit criteria ratings
 rast_list <- list(
@@ -47,34 +45,40 @@ rast_list <- list(
   )
 )
 
-
-# Species distribution
-sp_dist <- risa_maps$species_distributions$species1$raster
-
-
-test <- habitat_risk_assessment(rast_list, sp_dist, crit_df, equation = "multiplicative")
-
-terra::plot(risa_maps$species_kernel_maps$species1$raster)
-terra::plot(risa_maps$stressor_kernel_maps$stressor1$raster)
-terra::plot(risa_maps$stressor_kernel_maps$stressor2$raster)
-
-terra::plot(risa_maps$overlap_maps$species1$stressor1$raster)
-terra::plot(risa_maps$overlap_maps$species1$stressor2$raster)
-
-terra::plot(sqrt(((test$stressor1$E_criteria-1)^2 + (test$stressor1$C_criteria-1)^2)))
+spp_dist <- list(species1 = risa_maps$species_distributions$species1$raster,
+                 species2 = risa_maps$species_distributions$species2$raster)
 
 
-terra::plot(terra::mask(
-  test$stressor1$C_criteria))
+# Multi-species test
+many_test <- many_hra(rast_list, spp_dist, crit_list, equation = "euclidean")
+test1 <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]], equation = "euclidean")
+
+terra::plot(many_test$ecosys_risk_raw)
+
+test_stat <- get_stats(test1)
+
+test_stat_many <- get_stats(many_test)
+test_stat_many
+
+total_raw_index <- which(names(test1) == "total_raw")
+total_raw_index
+stressor_names <- names(test1)[1:(total_raw_index - 1)]
+stressor_names
+
+terra::plot(many_test$ecosys_risk_raw/2)
+
+m_jkl <- 2.83
+
+ecosys_risk_classified <- terra::ifel(many_test$ecosys_risk_raw == 0, 0,
+                                      terra::ifel(many_test$ecosys_risk_raw < (1/3)*m_jkl*length(crit_list), 1,
+                                                  terra::ifel(many_test$ecosys_risk_raw < (2/3)*m_jkl*length(crit_list), 2, 3)))
+
+terra::plot(ecosys_risk_classified)
+
+terra::plot(test1$total_raw)
+terra::plot(test2$total_raw)
+
+max(test1$total_raw)
+max(test2$total_raw)
 
 
-terra::plot(test$stressor1$C_criteria)
-
-terra::plot(test$stressor1$Risk_map_raw)
-terra::plot(test$stressor2$Risk_map_raw)
-
-terra::plot(test$stressor1$Risk_map)
-terra::plot(test$stressor2$Risk_map)
-
-get_stats(test)
-test$total

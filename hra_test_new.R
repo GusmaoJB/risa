@@ -1,4 +1,4 @@
-hra <- function(raster_list, species_distr, criteria, equation = c("euclidean", "multiplicative"), r_max = 3, n_overlap = NULL) {
+hra <- function(raster_list, species_distr, criteria, equation = c("euclidean", "multiplicative"), r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE) {
 
   if (!is.list(raster_list)) {
     stop("'raster_list' must be a list of lists named after each stressor")
@@ -6,6 +6,10 @@ hra <- function(raster_list, species_distr, criteria, equation = c("euclidean", 
 
   if (!list_depth_base(raster_list) == 2) {
     stop("'raster_list' must have two levels of nestedness: each list of stressors should host the working rasters")
+  }
+
+  for (i in raster_list) {
+
   }
 
   if (!is.data.frame(criteria)) {
@@ -122,6 +126,12 @@ hra <- function(raster_list, species_distr, criteria, equation = c("euclidean", 
       Risk_map_raw = risk_scores,
       Risk_map = risk_classified
     )
+
+    if (output_decimal_crs) {
+      for (r in risk_results[[stressor]]) {
+        risk_results[[stressor]][[r]] <- convert_to_decimal_degrees(risk_results[[stressor]][[r]])
+      }
+    }
   }
 
   # Calculate cumulative risk (sum across all stressors)
@@ -132,13 +142,19 @@ hra <- function(raster_list, species_distr, criteria, equation = c("euclidean", 
 
   risk_results$total_raw <- total_risk
   risk_results$total <- total_risk_classified
+
+  if (output_decimal_crs) {
+    risk_results$total_raw <- convert_to_decimal_degrees(total_risk)
+    risk_results$total <- convert_to_decimal_degrees(total_risk_classified)
+  }
+
   class(risk_results) <- c("risaHRA", class(risk_results))
 
   return(risk_results)
 }
 
 
-many_hra <- function(raster_list, dist_list, criteria, equation = c("euclidean", "multiplicative"), r_max = 3, n_overlap = NULL) {
+many_hra <- function(raster_list, dist_list, criteria, equation = c("euclidean", "multiplicative"), r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE) {
 
   if (!is.list(raster_list)) {
     stop("'raster_list' must be a list of list named after each species/habitat")
@@ -190,7 +206,7 @@ many_hra <- function(raster_list, dist_list, criteria, equation = c("euclidean",
   ecosys_risk_raw <- terra::ifel(all_spp_dist == 1, 0, NA)
 
   for (species in names(raster_list)) {
-    risk_results[[species]] <- hra(raster_list[[species]], dist_list[[species]], criteria[[species]], equation, r_max, n_overlap)
+    risk_results[[species]] <- hra(raster_list[[species]], dist_list[[species]], criteria[[species]], equation, r_max, n_overlap, output_decimal_crs)
     ecosys_risk_raw <- ecosys_risk_raw + terra::ifel(is.na(risk_results[[species]]$total_raw), 0, risk_results[[species]]$total_raw)
   }
 
@@ -211,19 +227,23 @@ many_hra <- function(raster_list, dist_list, criteria, equation = c("euclidean",
 
 
 # Generate summary statistics
-get_stats <- function(risks) {
+get_stats <- function(list) {
 
-  if (!inherits(risks, "risaHRA")) {
+  if (!inherits(list, "risaHRA")) {
     stop("Input must be a 'risaHRA' object.")
   }
 
   # Helper function to estimate stats for each stressor
-  get_stressor_stats <- function(list) {
+  get_stressor_stats <- function(sublist) {
+    total_raw_index <- which(names(sublist) == "total_raw")
+    message(paste("The list has", (total_raw_index-1), "stressors."))
+    stressor_names <- names(sublist)[1:(total_raw_index - 1)]
     output_df <- data.frame()
-    for (stressor in names(list)) {
-      if (is.list(list[[stressor]])){
-        rasters <- c(list[[stressor]]$E_criteria, list[[stressor]]$C_criteria,
-                     list[[stressor]]$Risk_map_raw, list[[stressor]]$Risk_map)
+    for (stressor in names(sublist)) {
+      if (is.list(sublist[[stressor]])){
+        print(paste("Calculating stats for stressor", stressor))
+        rasters <- c(sublist[[stressor]]$E_criteria, sublist[[stressor]]$C_criteria,
+                     sublist[[stressor]]$Risk_map_raw, sublist[[stressor]]$Risk_map)
         names(rasters) <- c("E", "C", "R", "R_reclass")
         df <- as.data.frame(rasters, na.rm = FALSE)
         total_cells <- sum(df$R_reclass >= 0, na.rm=TRUE)
@@ -245,7 +265,8 @@ get_stats <- function(risks) {
         output_df <- rbind.data.frame(output_df, stats)
       }
     }
-    total_df <- as.data.frame(list$total, na.rm = FALSE)
+    total_df <- as.data.frame(sublist$total, na.rm = FALSE)
+    print("Calculating stats from all stressors.")
     all_stressors_df <- rbind.data.frame(
       data.frame(
         STRESSOR = "(FROM ALL STRESSORS)",
@@ -268,8 +289,47 @@ get_stats <- function(risks) {
     return(output_df)
   }
 
-  if ()
+  if ("ecosys_risk_raw" %in% names(list)) {
+    eco_risk_index <- which(names(list)=="ecosys_risk_raw")
+    message(paste("Calculating summary statistics for", eco_risk_index-1, "species."))
 
+    output <- data.frame()
+
+    for (i in 1:(eco_risk_index-1)) {
+      sp_stats <- cbind.data.frame(SPECIES = names(list)[i], get_stressor_stats(list[[i]]))
+      output <- rbind.data.frame(output, sp_stats)
+    }
+
+    message("Calculating general ecosytem risk stats.")
+    ecosys_rasters<- c(list[[eco_risk_index]], list[[eco_risk_index+1]])
+    names(ecosys_rasters) <- c("R", "R_reclass")
+    ecosys_df <- as.data.frame(ecosys_rasters, na.rm = FALSE)
+    eco_total_cells <- sum(ecosys_df$R_reclass >= 0, na.rm=TRUE)
+
+    ecosys_risk_stats <- data.frame(
+      SPECIES = "ECOSYSTEM",
+      STRESSOR = "(FROM ALL STRESSORS)",
+      E_min   = NA,
+      E_max   = NA,
+      E_mean  = NA,
+      C_min   = NA,
+      C_max   = NA,
+      C_mean  = NA,
+      R_min   = min(ecosys_df$R,   na.rm = TRUE),
+      R_max   = max(ecosys_df$R,   na.rm = TRUE),
+      R_mean  = mean(ecosys_df$R,  na.rm = TRUE),
+      `R%high` = sum(ecosys_df$R_reclass == 3, na.rm = TRUE) / eco_total_cells * 100,
+      `R%medium` = sum(ecosys_df$R_reclass == 2, na.rm = TRUE) / eco_total_cells * 100,
+      `R%low` = sum(ecosys_df$R_reclass == 1, na.rm = TRUE) / eco_total_cells * 100,
+      `R%None` = sum(ecosys_df$R_reclass == 0, na.rm = TRUE) / eco_total_cells * 100
+    )
+
+    return(rbind.data.frame(output, ecosys_risk_stats))
+  } else {
+    message("Calculating summary statistics for one species.")
+    output <- get_stressor_stats(list)
+    return(output)
+  }
 }
 
 

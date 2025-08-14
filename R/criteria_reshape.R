@@ -25,47 +25,136 @@
 #' crit_list
 #' @export
 criteria_reshape <- function(x) {
-  df_list <- list()
-  sp_n <- (dim(x)[2]-2) %/% 3
-  line_breaks <- which(x[,1] %in% c("", NA))
-  stressor_n <- length(line_breaks)
-  criteria_column <- dim(x)[2]
-  criteria_column <- ifelse((criteria_column-2) %% 3 > 0, (criteria_column-1), criteria_column)
+  if (!is.data.frame(x) || ncol(x) < 6L) {
+    stop("`x` must be a data.frame with at least 6 columns.")
+  }
 
-  # Getting stressor names
-  line_breaks <- which(x[,1] %in% c("", NA))
-  stressor_n <- length(line_breaks)
-  stressor_names <- c()
-  for(i in 1:stressor_n){
-    if(i == 1) {
-      stressor_names[i] <- x[line_breaks[i]+2,1]
-    } else {
-      stressor_names[i] <- x[line_breaks[i]+1,1]
+  # Detect E/C column (by name or content)
+  norm_name <- function(s) tolower(gsub("[^a-z]", "", s))
+  name_hits <- which(norm_name(names(x)) %in% c("ec", "criteriatype"))
+  crit_col  <- if (length(name_hits)) name_hits[length(name_hits)] else NULL
+
+  if (is.null(crit_col)) {
+    is_ec_like <- function(v) {
+      tok <- toupper(trimws(as.character(v)))
+      tok <- tok[!(is.na(tok) | tok == "")]
+      if (!length(tok)) return(FALSE)
+      tok <- tok[!tok %in% c("E/C","EC","E C","CRITERIA TYPE")]
+      if (!length(tok)) return(TRUE)
+      mean(tok %in% c("E","C")) >= 0.80
+    }
+    cand <- which(vapply(x, is_ec_like, logical(1)))
+    if (length(cand)) crit_col <- cand[length(cand)]
+  }
+  if (is.null(crit_col)) stop("Could not find a column with only 'E'/'C' values (criteria type).")
+
+  # Species triplets live between column 1 and E/C column
+  mid_cols <- (crit_col - 1L) - 1L
+  if (mid_cols < 3L) stop("Not enough species columns between the first column and the E/C column.")
+  sp_n <- floor(mid_cols / 3L)
+  sp_firsts <- 2L + 3L * (0:(sp_n - 1L))
+  sp_names  <- names(x)[sp_firsts]
+  if (is.null(sp_names) || any(!nzchar(sp_names))) sp_names <- paste0("sp", seq_len(sp_n))
+
+  # Build STRESSOR labels from blank-separated blocks in col 1
+  lab <- as.character(x[[1L]])
+  is_blank <- is.na(lab) | trimws(lab) == ""
+  n <- nrow(x)
+  blank_idx <- which(is_blank)
+
+  # Vectorized section-title detector
+  is_section_title <- function(s) {
+    s0 <- tolower(trimws(as.character(s)))
+    out <- grepl("resilience.*attribute", s0) |
+      grepl("stressor.*overlap.*propert", s0) |
+      grepl("^rating instruction", s0)
+    out[is.na(out)] <- FALSE
+    out
+  }
+
+  header_idx  <- integer(0)
+  header_name <- character(0)
+
+  for (b in blank_idx) {
+    j <- b + 1L
+    # Advance to first non-blank
+    while (j <= n && (is.na(lab[j]) || trimws(lab[j]) == "")) j <- j + 1L
+    if (j > n) next
+    # Skip ONLY section titles; DO NOT skip E/C-labeled stressor header rows
+    while (j <= n && is_section_title(lab[j])) j <- j + 1L
+    if (j <= n && !is_blank[j]) {
+      header_idx  <- c(header_idx, j)
+      header_name <- c(header_name, lab[j])
     }
   }
 
-  # Spliting dataframes
-  counter <- 2
-  for(i in 1:sp_n){
-    sub_df <- x[,c(1,counter:(counter+2),criteria_column)]
-    str_attr_n <- (dim(sub_df)[1] - line_breaks[1] - stressor_n*2)/stressor_n
-    spe_attr <- rep(c("NA"), line_breaks[1]-2)
-    str_attr <- rep(stressor_names, each = str_attr_n)
-    names(sub_df) <- sub_df[1,]
-    skip_rows <- c(1, line_breaks[1]:(line_breaks[1]+2))
-    if (length(line_breaks) > 1) {
-      skip_rows <- c(1, line_breaks[1]:(line_breaks[1]+2), line_breaks[-1], (line_breaks[-1]+1))
+  # Assign each row after a header to that stressor until next blank
+  stressor_by_row <- rep(NA_character_, n)
+  if (length(header_idx)) {
+    for (k in seq_along(header_idx)) {
+      start <- header_idx[k] + 1L
+      nb <- blank_idx[blank_idx > header_idx[k]]
+      end <- if (length(nb)) nb[1L] - 1L else n
+      if (start <= end) stressor_by_row[start:end] <- header_name[k]
     }
-    sub_df <- sub_df[-c(skip_rows),]
-    names(sub_df)[1] <- "ATTRIBUTES"
-    sub_df <- cbind.data.frame(STRESSOR = c(spe_attr, str_attr), sub_df)
-    sub_df$RATING <- as.integer(sub_df$RATING)
-    sub_df$DQ <- as.integer(sub_df$DQ)
-    sub_df$WEIGHT <- as.integer(sub_df$WEIGHT)
-
-    df_list[[i]] <- sub_df
-    counter <- counter+2
   }
-  names(df_list) <- names(x)[seq(2,(sp_n*3), 3)]
-  return(df_list)
+
+  # Helpers to detect internal header lines
+  looks_like_internal_header <- function(row_vals) {
+    vv <- tolower(trimws(as.character(row_vals)))
+    any(grepl("^rating$|^dq$|^weight$|^e/?c$|^criteria", vv))
+  }
+  is_row_internal_header <- function(df_row) {
+    ec_val <- tolower(trimws(as.character(df_row[[length(df_row)]])))
+    has_eclabel <- ec_val %in% c("e/c","ec","e c","criteria type")
+    has_tokens  <- looks_like_internal_header(df_row)
+    has_eclabel || has_tokens
+  }
+
+  # Per-species reshape
+  out <- vector("list", sp_n)
+
+  for (i in seq_len(sp_n)) {
+    start <- 2L + 3L * (i - 1L)
+    cols  <- c(1L, start:(start + 2L), crit_col)
+    sub   <- x[, cols, drop = FALSE]
+
+    names(sub) <- c("ATTRIBUTES","RATING","DQ","WEIGHT","E/C")
+    r1 <- as.character(sub[1L, , drop = TRUE])
+    data_rows <- if (looks_like_internal_header(r1)) 2L:nrow(sub) else 1L:nrow(sub)
+
+    # Drop blank rows, section titles, and any internal header-like rows
+    attrv <- as.character(sub$ATTRIBUTES)
+    sec_title_rows <- is_section_title(attrv)
+    internal_header_rows <- vapply(seq_len(nrow(sub)), function(rr) {
+      is_row_internal_header(sub[rr, , drop = FALSE])
+    }, logical(1))
+
+    drop_rows <- which(is.na(attrv) | trimws(attrv) == "" | sec_title_rows | internal_header_rows)
+    keep <- setdiff(data_rows, drop_rows)
+
+    if (!length(keep)) {
+      warning("No data rows found for species ", sQuote(sp_names[i]), ". Returning empty table.")
+      out[[i]] <- data.frame(STRESSOR=character(0), ATTRIBUTES=character(0),
+                             RATING=integer(0), DQ=integer(0), WEIGHT=integer(0),
+                             `E/C`=character(0))
+      next
+    }
+
+    df <- sub[keep, , drop = FALSE]
+    df$STRESSOR <- stressor_by_row[keep]
+
+    suppressWarnings({
+      df$RATING <- as.integer(df$RATING)
+      df$DQ     <- as.integer(df$DQ)
+      df$WEIGHT <- as.integer(df$WEIGHT)
+    })
+
+    df <- df[, c("STRESSOR","ATTRIBUTES","RATING","DQ","WEIGHT","E/C")]
+    rownames(df) <- NULL
+    out[[i]] <- df
+  }
+
+  names(out) <- sp_names
+  out
 }

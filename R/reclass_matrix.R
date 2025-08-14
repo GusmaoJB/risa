@@ -3,72 +3,58 @@
 #' Builds a matrix mapping value ranges to discrete class codes,
 #' optionally excluding lowest 5 percent.
 #'
-#' @param raster A `SpatRaster` object from `terra`.
+#' @param raster A `terra::SpatRaster` object.
 #' @param n_classes Integer 1–10 number of classes.
 #' @param exclude_lowest Logical; if `TRUE`, values below 5 percent of max are mapped to `NA`.
+#' @param lowest_prop Numeric; Defines the cutoff for the lowest proportion  (default `0.05`).
 #' @returns A numeric matrix with columns `from`, `to`, and `class` for use with `terra::classify()`.
-#' @importFrom terra values
+#' @importFrom terra global
 #' @examples
-#' # Creating example data
-#' m <- matrix(rep(c(0.01,2,3,4,5), 5), ncol = 5, byrow = TRUE)
-#' coords <- data.frame(long = c(1,2,3,4,5), lat = c(1,2,3,4,5))
-#' xres <- diff(coords$long)[1]
-#' yres <- diff(coords$lat)[1]
-#' e <- terra::ext(min(coords$long) - xres/2,
-#'          max(coords$long) + xres/2,
-#'          min(coords$lat) - yres/2,
-#'          max(coords$lat) + yres/2)
-#' r <- rast(nrows = nrow(m),
-#'           ncols = ncol(m),
-#'           ext = e, crs = "")
-#' terra::values(r) <- as.vector(m)
-#' plot(r)
-#'
-#' # Create reclassification matrix
-#' rec_mt <- reclass_matrix(r) # exclude lowest values
-#' rec_mt
-#' rec_mt_all <- reclass_matrix(r, exclude_lowest = FALSE) # with all values
-#' rec_mt_all
+#' # Example
+#' r <- terra::rast(nrows=5, ncols=5, vals=c(0.01,2,3,4,5))
+#' reclass_matrix(r)
 #' @export
-reclass_matrix <- function(raster, n_classes = 3, exclude_lowest = TRUE) {
+reclass_matrix <- function(raster, n_classes = 3, exclude_lowest = TRUE, lowest_prop = 0.05) {
   # Input checks
-  if (!is.numeric(n_classes) ||
-      n_classes %% 1 != 0 ||
-      n_classes < 1 ||
-      n_classes > 10) {
-    stop("n_classes must be an integer between 1 and 10.")
+  if (!inherits(raster, "SpatRaster")) stop("`raster` must be a terra::SpatRaster.")
+  if (!is.numeric(n_classes) || n_classes %% 1 != 0 || n_classes < 1 || n_classes > 10) {
+    stop("`n_classes` must be an integer between 1 and 10.")
+  }
+  if (!is.logical(exclude_lowest) || length(exclude_lowest) != 1L) {
+    stop("`exclude_lowest` must be a single logical (TRUE/FALSE).")
   }
 
-  # Pull out the values
-  vals    <- terra::values(raster, na.rm = TRUE)
-  min_val <- min(vals, na.rm = TRUE)
-  max_val <- max(vals, na.rm = TRUE)
-  val_05  <- 0.05 * max_val
-
-  # Set the break bounds
-  if (exclude_lowest) {
-    lower_break <- val_05
-  } else {
-    lower_break <- min_val
+  # Min/Max without loading all values
+  mm <- terra::global(raster, fun = c("min", "max"), na.rm = TRUE)
+  min_val <- as.numeric(mm[1, "min"])
+  max_val <- as.numeric(mm[1, "max"])
+  if (!is.finite(min_val) || !is.finite(max_val)) {
+    stop("Raster contains no finite values (all NA/Inf).")
   }
+
+  # Cutoff for the lowest proportion
+  val_05 <- lowest_prop * max_val
+
+  # Lower break for the classed bins
+  lower_break <- if (exclude_lowest) val_05 else min_val
+  if (lower_break > max_val) lower_break <- min_val  # guard weird cases
+
+  # Equal-width breaks -> n_classes bins
   breaks <- seq(lower_break, max_val, length.out = n_classes + 1)
 
-  # Build the matrix
-  mat <- NULL
+  # Build bins: make from/to the same length (n_classes)
+  from <- breaks[-length(breaks)]
+  to   <- breaks[-1]
+  to[length(to)] <- Inf  # last bin open-ended
+  cls  <- seq_len(n_classes)
 
-  # If we want to exclude the lowest 5%, map them to NA
+  mat <- cbind(from = from, to = to, class = cls)
+
+  # Prepend NA bin for excluded-lowest portion
   if (exclude_lowest) {
-    mat <- matrix(c(-Inf, val_05, NA), ncol = 3, byrow = TRUE)
+    mat <- rbind(c(from = -Inf, to = val_05, class = NA_real_), mat)
   }
 
-  # Append the n_classes bins
-  for (i in seq_len(n_classes)) {
-    from  <- breaks[i]
-    to <- if (i < length(breaks)) breaks[i + 1] else Inf
-    cls <- i
-    mat <- rbind(mat, c(from, to, cls))
-  }
-
-  colnames(mat) <- c("from", "to", "class")
-  return(mat)
+  storage.mode(mat) <- "double"
+  mat
 }

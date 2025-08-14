@@ -1,13 +1,15 @@
 #' Create polygon of the area of interest
 #'
-#' Generate an area polygon (convex hull or bounding box) around input points, with optional buffering.
+#' Generate an area polygon (convex hull or bounding box) around input points, with optional scaling.
+#' The scaling is an affine expansion from the centroid by a factor of (1 + buffer_frac).
 #'
 #' @param x An `sf` object or data frame with longitude/latitude in the first two columns.
-#' @param crs Integer or string; EPSG code or proj4 string for metric transformation. If `NULL`, select UTM zone automatically.
-#' @param area_type Character; one of \code{"convex_hull"} or \code{"bbox"}. Default is \code{"convex_hull"}.
-#' @param buffer_frac Numeric; fraction by which to buffer the hull or bounding box. (e.g. 0.5 for 50\%.)
-#' @return An `sf` object representing the area polygon.
-#' @importFrom sf st_crs st_coordinates st_centroid st_transform st_convex_hull st_union st_polygon st_sfc st_geometry st_bbox
+#' @param crs Integer or string; EPSG or proj string for the metric transform. If `NULL`, UTM is chosen automatically.
+#' @param area_type One of `"convex_hull"` or `"bbox"`. Default `"convex_hull"`.
+#' @param buffer_frac Numeric ≥ 0; fractional expansion relative to the centroid (e.g., 0.5 = +50%).
+#' @param quiet Logical; suppress informative messages. Default `TRUE`.
+#' @return An `sf` POLYGON.
+#' @importFrom sf st_crs st_bbox st_sfc st_polygon st_as_sf
 #' @examples
 #' # Create test data
 #' coords <- data.frame(long = c(1,2,2,4), lat = c(4,4,2,2))
@@ -18,63 +20,87 @@
 #' aoi <- create_area(coords)
 #'
 #' # Plot results
-#' plot(st_geometry(aoi), border = "blue", axes=TRUE)
-#' plot(st_geometry(coords_vec_metric), add = TRUE, col = "red")
+#' plot(sf::st_geometry(aoi), border = "blue", axes=TRUE)
+#' plot(sf::st_geometry(coords_vec_metric), add = TRUE, col = "red")
 #' @export
-create_area <- function(x, crs = NULL, area_type = c("convex_hull", "bbox"), buffer_frac = 0.5) {
+create_area <- function(x,
+                        crs = NULL,
+                        area_type = c("convex_hull", "bbox"),
+                        buffer_frac = 0.5,
+                        quiet = TRUE) {
   area_type <- match.arg(area_type)
+  if (!is.numeric(buffer_frac) || length(buffer_frac) != 1L || buffer_frac < 0)
+    stop("`buffer_frac` must be a single non-negative number.")
 
-  # Check input
+  # Accept sf or data.frame
   if (inherits(x, "sf")) {
     x_sf <- x
   } else if (inherits(x, "data.frame")) {
     x_sf <- df_to_shp(x)
   } else {
-    stop("`x` must be an sf or data.frame")
+    stop("`x` must be an sf or a data.frame.")
   }
 
   # Project to metric
-  x_m <- transform_to_metric(x_sf, metric_crs = crs)
-  x_sf <- x_m$shape
-  coords <- x_m$coordinates
-  crs_proj <- st_crs(x_sf)
+  x_m <- transform_to_metric(x_sf, metric_crs = crs, quiet = quiet)
+  x_sf     <- x_m$shape
+  coords   <- x_m$coordinates
+  crs_proj <- sf::st_crs(x_sf)
 
-  # Convex hull case (default)
+  # Use XY only (avoid L1/L2/Z/M columns)
+  xy <- coords[, 1:2, drop = FALSE]
+
+  # Helper: build polygon from a set of corner points (close the ring)
+  make_poly <- function(mat_xy) {
+    mat_xy <- as.matrix(mat_xy)
+    if (!all(mat_xy[1, ] == mat_xy[nrow(mat_xy), ])) {
+      mat_xy <- rbind(mat_xy, mat_xy[1, , drop = FALSE])
+    }
+    sf::st_as_sf(sf::st_sfc(sf::st_polygon(list(mat_xy)), crs = crs_proj))
+  }
+
+  # Helper: scale a set of points about its centroid
+  scale_about_centroid <- function(mat_xy, s) {
+    cent <- colMeans(mat_xy)
+    sweep(mat_xy, 2, cent, function(v, c) (v - c) * s + c)
+  }
+
+  scale_factor <- 1 + buffer_frac
+
   if (area_type == "convex_hull") {
-    # Original centroid of points
-    cent <- colMeans(coords)
-    # Scale factor
-    scale_factor <- 1 + buffer_frac
-    # Scale coords away from centroid, then re-center
-    scaled_coords <- sweep(coords, 2, cent, FUN = function(pt, c) (pt - c) * scale_factor + c)
-    # Find convex hull on the scaled points
-    hull_ix      <- chull(scaled_coords)
-    hull_coords  <- scaled_coords[c(hull_ix, hull_ix[1]), , drop = FALSE]
-    # Build sf polygon and return
-    poly     <- st_polygon(list(hull_coords))
-    out_sfc  <- st_sfc(poly, crs = crs_proj)
-    return(st_as_sf(out_sfc))
+    # Handle degenerate cases (need ≥ 3 unique points)
+    uniq <- unique.data.frame(as.data.frame(xy))
+    if (nrow(uniq) < 3L) {
+      # fall back to a scaled bbox
+      if (!quiet) message("Fewer than 3 unique points; using scaled bounding box instead.")
+      bb <- sf::st_bbox(x_sf)
+      corners <- matrix(
+        c(bb$xmin, bb$ymin,
+          bb$xmin, bb$ymax,
+          bb$xmax, bb$ymax,
+          bb$xmax, bb$ymin),
+        ncol = 2, byrow = TRUE
+      )
+      corners <- scale_about_centroid(corners, scale_factor)
+      return(make_poly(corners))
+    }
 
-  } else {
-    # Bounding box case
-    # Compute original centroid
-    cent <- colMeans(coords)
-    # Scale factor
-    scale_factor <- 1 + buffer_frac
-    # Extract original bbox
+    # Compute convex hull on points, then scale the hull vertices
+    hull_ix <- chull(uniq[, 1], uniq[, 2])
+    hull_xy <- as.matrix(uniq[hull_ix, , drop = FALSE])
+    hull_xy <- scale_about_centroid(hull_xy, scale_factor)
+    return(make_poly(hull_xy))
+
+  } else { # area_type == "bbox"
     bb <- sf::st_bbox(x_sf)
-    corners <- matrix(c(
-      bb$xmin, bb$ymin,
-      bb$xmin, bb$ymax,
-      bb$xmax, bb$ymax,
-      bb$xmax, bb$ymin
-    ), ncol = 2, byrow = TRUE)
-    # Scale corners from centroid and re-center
-    scaled_corners <- sweep(corners, 2, cent, FUN = function(pt, c) (pt - c) * scale_factor + c)
-    # Close the polygon ring
-    poly_coords <- rbind(scaled_corners, scaled_corners[1, ])
-    poly <- st_polygon(list(poly_coords))
-    out_sfc <- st_sfc(poly, crs = crs_proj)
-    return(st_as_sf(out_sfc))
+    corners <- matrix(
+      c(bb$xmin, bb$ymin,
+        bb$xmin, bb$ymax,
+        bb$xmax, bb$ymax,
+        bb$xmax, bb$ymin),
+      ncol = 2, byrow = TRUE
+    )
+    corners <- scale_about_centroid(corners, scale_factor)
+    return(make_poly(corners))
   }
 }

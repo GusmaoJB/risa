@@ -8,32 +8,56 @@ get_class_kernel(
   x,
   area = NULL,
   n_classes = 3,
-  output_layer_type = "shp",
+  output_layer_type = c("shp", "raster", "both"),
   radius = NULL,
-  group_size = NULL
+  radius_method = c("nndist", "ppl", "fixed"),
+  group_size = NULL,
+  pixel_size = NULL,
+  dimyx = c(512, 512),
+  exclude_lowest = TRUE,
+  lowest_prop = 0.05,
+  return_crs = c("metric", "4326"),
+  quiet = TRUE
 )
 }
 \arguments{
-\item{x}{An `sf` object or data frame of points (lon/lat) or tibble.}
+\item{x}{An `sf` point layer or a data.frame/tibble with lon/lat in two columns.}
 
-\item{area}{Bounding region (`bbox`, `sf`, or data frame) or `NULL` to auto-compute.}
+\item{area}{Bounding region (`sf`, `bbox`, or data.frame) or `NULL` (auto bbox with buffer).}
 
-\item{n_classes}{Integer number of reclassification bins.}
+\item{n_classes}{Integer number of reclassification bins. Default 3.}
 
-\item{output_layer_type}{Character; one of `"shp"`, `"raster"`, or `"both"`.}
+\item{output_layer_type}{One of `"shp"`, `"raster"`, or `"both"`. Default `"shp"`.}
 
-\item{radius}{Numeric smoothing bandwidth; if `NULL`, set to 10 percent of mean pairwise distance.}
+\item{radius}{KDE bandwidth (same units as projected coordinates). If `NULL`,
+uses `radius_method`. Default `NULL`.}
 
-\item{group_size}{Optional column name for weights.}
+\item{radius_method}{One of `"nndist"` (median NN × 1.5), `"ppl"` (profile
+likelihood via `spatstat.explore::bw.ppl`), or `"fixed"`. Default `"nndist"`.}
+
+\item{group_size}{Optional column name in `x` to use as non-negative weights.}
+
+\item{pixel_size}{Optional target pixel size (meters). If `NULL`, uses `dimyx`.}
+
+\item{dimyx}{Optional `(ny, nx)` grid size for the KDE (default `c(512,512)`).
+Ignored if `pixel_size` is provided.}
+
+\item{exclude_lowest}{Logical; passed to `reclass_matrix()` (default `TRUE`).}
+
+\item{lowest_prop}{Numeric; passed to `reclass_matrix()` (default `0.05`).}
+
+\item{return_crs}{One of `"metric"` (default; same CRS as used for KDE) or `"4326"`
+to reproject outputs to WGS84. Rasters use nearest-neighbor to preserve classes.}
+
+\item{quiet}{Suppress messages. Default `TRUE`.}
 }
 \value{
-An `sf` object, `SpatRaster`, or list containing both.
+`sf`, `SpatRaster`, or `list(raster=..., shp=...)` depending on `output_layer_type`.
 }
 \description{
-Computes KDE for point data, reclassifies into classes,
-and returns a raster (`SpatRaster`), a vector (`sf`), or both.
-The bandwidth of the KDE smoothing is based on the radius parameter.
-If not informed, the radius is set as 10 percent of mean pairwise distance among points.
+Computes a KDE for point data in a metric CRS, reclassifies values into
+`n_classes`, and returns a raster (`SpatRaster`), a vector (`sf` polygons),
+or both.
 }
 \examples{
 # Creating test data

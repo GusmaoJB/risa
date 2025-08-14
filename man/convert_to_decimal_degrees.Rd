@@ -4,23 +4,27 @@
 \alias{convert_to_decimal_degrees}
 \title{Convert spatial object to decimal degrees (EPSG:4326)}
 \usage{
-convert_to_decimal_degrees(obj)
+convert_to_decimal_degrees(obj, method = "near", quiet = TRUE)
 }
 \arguments{
-\item{obj}{A `SpatRaster` or `sf` object with defined CRS.}
+\item{obj}{A `terra::SpatRaster` or `sf` object with a defined CRS.}
+
+\item{method}{Resampling method used for rasters. One of
+`"near"`, `"bilinear"`, `"cubic"`, `"cubicspline"`, `"lanczos"`. Ignored for `sf`.}
+
+\item{quiet}{Logical; suppress messages. Default `TRUE`.}
 }
 \value{
-Transformed object in EPSG:4326.
+Object reprojected to EPSG:4326 (same class as input).
 }
 \description{
-Projects a `SpatRaster` or `sf` object into geographic coordinates.
+Reprojects a `SpatRaster` or `sf` object to geographic coordinates (EPSG:4326).
+Note: for `sf`, only the geometry is transformed; any original numeric
+columns you kept (e.g., Easting/Northing) are not altered.
 }
 \examples{
-# Create test data
 df <- data.frame(long = c(277000,389000,389000,611000),
-                 lat = c(442000,442000,221000,221000))
-sf_obj <- st_as_sf(df, coords = names(df), crs = 32631, remove = FALSE)
-
-# Convert to decimal degrees
+                 lat  = c(442000,442000,221000,221000))
+sf_obj <- sf::st_as_sf(df, coords = names(df), crs = 32631, remove = FALSE)
 convert_to_decimal_degrees(sf_obj)
 }

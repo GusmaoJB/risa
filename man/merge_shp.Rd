@@ -9,13 +9,15 @@ merge_shp(shp_list, group_size = NULL)
 \arguments{
 \item{shp_list}{A list of `sf` objects.}
 
-\item{group_size}{Optional column name to include in output.}
+\item{group_size}{Optional name of a column in each `sf` to repeat per vertex and include in the output.}
 }
 \value{
 A data.frame with columns `X`, `Y`, `group`, and optionally `group_size`.
 }
 \description{
 Combines multiple vector objects of class `sf` into a single data frame with X, Y, and group labels.
+Coordinates are the vertices of each geometry (POINT/LINESTRING/POLYGON/MULTI*).
+For polygons, ring-closing vertices are included as returned by `sf::st_coordinates()`.
 }
 \examples{
 # Create test data
@@ -25,6 +27,4 @@ vec_list <- list(vec1, vec2)
 
 # Convert vector list into data.frame
 df <- merge_shp(vec_list)
-df
-
 }

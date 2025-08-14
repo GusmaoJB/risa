@@ -13,7 +13,7 @@
 #' @param output_layer_type One of `"shp"`, `"raster"`, or `"both"`. Default `"shp"`.
 #' @param quiet Logical; suppress informative messages. Default `TRUE`.
 #' @return An `sf` polygon layer, a `SpatRaster`, or a list with both.
-#' @importFrom terra same.crs compareGeom resample classify as.polygons global rast values mask crs overlay
+#' @importFrom terra same.crs compareGeom resample classify as.polygons global rast values mask crs
 #' @importFrom sf st_as_sf st_set_crs
 #' @examples
 #' species  <- data.frame(long = rnorm(80, 0, 10),  lat = rnorm(80, 0, 10))
@@ -83,7 +83,7 @@ get_overlap_kernel <- function(
     s_min    <- 1
     s_max    <- n_classes
   } else if (method == "max") {
-    score    <- terra::overlay(x, y, fun = function(a, b) pmax(a, b))
+    score    <- terra::mosaic(x, y, fun = function(a, b) pmax(a, b, na.rm = TRUE))
     s_min    <- 1
     s_max    <- n_classes
   }

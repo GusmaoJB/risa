@@ -4,24 +4,32 @@
 \alias{df_to_list}
 \title{Split a data.frame or sf into a list of sf by group}
 \usage{
-df_to_list(df)
+df_to_list(df, group = NULL, drop_na_group = TRUE, ...)
 }
 \arguments{
-\item{df}{A data.frame or `sf` with at least two coordinate columns and optional group column.}
+\item{df}{A data.frame (with lon/lat columns) or an `sf` object.}
+
+\item{group}{Optional grouping column (name or index). If omitted:
+- for data.frame with ≥3 columns, uses the 3rd column;
+- for sf, returns a single-element list (no split).}
+
+\item{drop_na_group}{Logical; if `FALSE`, rows with NA in `group` are returned
+as a `<NA>` element. Default `TRUE`.}
+
+\item{...}{Passed to `df_to_shp()` when `df` is a data.frame (e.g., `lon`, `lat`, `crs`).}
 }
 \value{
-A named list of `sf` objects, one per group level.
+A named list of `sf` objects, one per group level (or a single item if no grouping).
 }
 \description{
-Splits data.frame rows into separate `sf` objects based on a grouping factor (column 3).
+Splits rows into separate `sf` objects based on a grouping column.
+If `df` is a data.frame, it's converted once with `df_to_shp()` and then split.
 }
 \examples{
-# Create test data
-df <- data.frame(long = c(1,2,2,4,2,5,4,6),
-                 lat = c(4,4,2,2,4,4,2,2),
-                 species=rep(c("sp1", "sp2"), each=4))
-
-#create vector list
-vec_list <- df_to_list(df)
-vec_list
+df <- data.frame(
+  long = c(1,2,2,4, 2,5,4,6),
+  lat  = c(4,4,2,2, 4,4,2,2),
+  species = rep(c("sp1","sp2"), each = 4)
+)
+vec_list <- df_to_list(df, group = "species")
 }

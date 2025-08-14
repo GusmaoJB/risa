@@ -4,14 +4,21 @@
 \alias{reclass_matrix}
 \title{Generate reclassification matrix for raster values}
 \usage{
-reclass_matrix(raster, n_classes = 3, exclude_lowest = TRUE)
+reclass_matrix(
+  raster,
+  n_classes = 3,
+  exclude_lowest = TRUE,
+  lowest_prop = 0.05
+)
 }
 \arguments{
-\item{raster}{A `SpatRaster` object from `terra`.}
+\item{raster}{A `terra::SpatRaster` object.}
 
 \item{n_classes}{Integer 1–10 number of classes.}
 
 \item{exclude_lowest}{Logical; if `TRUE`, values below 5 percent of max are mapped to `NA`.}
+
+\item{lowest_prop}{Numeric; Defines the cutoff for the lowest proportion  (default `0.05`).}
 }
 \value{
 A numeric matrix with columns `from`, `to`, and `class` for use with `terra::classify()`.
@@ -21,24 +28,7 @@ Builds a matrix mapping value ranges to discrete class codes,
 optionally excluding lowest 5 percent.
 }
 \examples{
-# Creating example data
-m <- matrix(rep(c(0.01,2,3,4,5), 5), ncol = 5, byrow = TRUE)
-coords <- data.frame(long = c(1,2,3,4,5), lat = c(1,2,3,4,5))
-xres <- diff(coords$long)[1]
-yres <- diff(coords$lat)[1]
-e <- terra::ext(min(coords$long) - xres/2,
-         max(coords$long) + xres/2,
-         min(coords$lat) - yres/2,
-         max(coords$lat) + yres/2)
-r <- rast(nrows = nrow(m),
-          ncols = ncol(m),
-          ext = e, crs = "")
-terra::values(r) <- as.vector(m)
-plot(r)
-
-# Create reclassification matrix
-rec_mt <- reclass_matrix(r) # exclude lowest values
-rec_mt
-rec_mt_all <- reclass_matrix(r, exclude_lowest = FALSE) # with all values
-rec_mt_all
+# Example
+r <- terra::rast(nrows=5, ncols=5, vals=c(0.01,2,3,4,5))
+reclass_matrix(r)
 }

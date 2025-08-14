@@ -4,37 +4,48 @@
 \alias{get_overlap_kernel}
 \title{Compute overlap hotspots from two reclassified rasters}
 \usage{
-get_overlap_kernel(x, y, n_classes = 3, output_layer_type = "shp")
+get_overlap_kernel(
+  x,
+  y,
+  n_classes = 3,
+  out_classes = n_classes,
+  method = c("product", "sum", "geom_mean", "max"),
+  resample_method = "near",
+  output_layer_type = c("shp", "raster", "both"),
+  quiet = TRUE
+)
 }
 \arguments{
-\item{x}{A reclassified `SpatRaster` of class codes.}
+\item{x, y}{Single-layer `terra::SpatRaster` with the same CRS; values are class codes.}
 
-\item{y}{A reclassified `SpatRaster` with same CRS and class range.}
+\item{n_classes}{Integer: number of classes in the inputs (default 3).}
 
-\item{n_classes}{Integer number of classes used in inputs.}
+\item{out_classes}{Integer: number of classes in the output (default = `n_classes`).}
 
-\item{output_layer_type}{Character; one of `"shp"`, `"raster"`, or `"both"`.}
+\item{method}{Combination rule: `"product"` (default), `"sum"`, `"geom_mean"`, or `"max"`.}
+
+\item{resample_method}{Resampling to align `y` to `x` when grids differ. For class rasters,
+the default `"near"` preserves class labels.}
+
+\item{output_layer_type}{One of `"shp"`, `"raster"`, or `"both"`. Default `"shp"`.}
+
+\item{quiet}{Logical; suppress informative messages. Default `TRUE`.}
 }
 \value{
-An `sf` object, `SpatRaster`, or list containing both.
+An `sf` polygon layer, a `SpatRaster`, or a list with both.
 }
 \description{
-Multiplies two classed rasters and reclassifies the result into risk ratings.
+Combines two class-coded rasters (e.g., exposure & consequence) into an overlap/risk
+surface, then reclassifies to `out_classes` bins. Inputs are assumed to have integer
+classes in `1…n_classes` (0 or NA treated as background).
 }
 \examples{
-# Creating test data
-species <- data.frame(long = rnorm(80, 0, 10), lat = rnorm(80, 0, 10))
+species  <- data.frame(long = rnorm(80, 0, 10),  lat = rnorm(80, 0, 10))
 stressor <- data.frame(long = rnorm(100, 0, 10), lat = rnorm(100, 0, 10))
 kde_spe <- get_class_kernel(species,  output_layer_type = "raster")
-kde_str <- get_class_kernel(stressor,  output_layer_type = "raster")
-kde_spe <- terra::project(kde_spe, crs(kde_str), method = "bilinear")
-
-# Creating reclassified overlap raster
-overlap <- get_overlap_kernel(kde_spe, kde_str, output_layer_type = "raster")
-
-# Plot KDE map
-par(mfrow=c(1,3))
-plot(kde_spe, main="Species distribution")
-plot(kde_str, main="Stressor occurrence")
-plot(overlap, main="Overlap")
+kde_str <- get_class_kernel(stressor, output_layer_type = "raster")
+# Ensure same grid (nearest to preserve class labels)
+kde_str <- terra::project(kde_str, kde_spe, method = "near")
+overlap <- get_overlap_kernel(kde_spe, kde_str, method = "product", output_layer_type = "raster")
+terra::plot(overlap)
 }

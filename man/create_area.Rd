@@ -8,23 +8,27 @@ create_area(
   x,
   crs = NULL,
   area_type = c("convex_hull", "bbox"),
-  buffer_frac = 0.5
+  buffer_frac = 0.5,
+  quiet = TRUE
 )
 }
 \arguments{
 \item{x}{An `sf` object or data frame with longitude/latitude in the first two columns.}
 
-\item{crs}{Integer or string; EPSG code or proj4 string for metric transformation. If `NULL`, select UTM zone automatically.}
+\item{crs}{Integer or string; EPSG or proj string for the metric transform. If `NULL`, UTM is chosen automatically.}
 
-\item{area_type}{Character; one of \code{"convex_hull"} or \code{"bbox"}. Default is \code{"convex_hull"}.}
+\item{area_type}{One of `"convex_hull"` or `"bbox"`. Default `"convex_hull"`.}
 
-\item{buffer_frac}{Numeric; fraction by which to buffer the hull or bounding box. (e.g. 0.5 for 50\%.)}
+\item{buffer_frac}{Numeric ≥ 0; fractional expansion relative to the centroid (e.g., 0.5 = +50 percent).}
+
+\item{quiet}{Logical; suppress informative messages. Default `TRUE`.}
 }
 \value{
-An `sf` object representing the area polygon.
+An `sf` POLYGON.
 }
 \description{
-Generate an area polygon (convex hull or bounding box) around input points, with optional buffering.
+Generate an area polygon (convex hull or bounding box) around input points, with optional scaling.
+The scaling is an affine expansion from the centroid by a factor of (1 + buffer_frac).
 }
 \examples{
 # Create test data
@@ -36,6 +40,6 @@ coords_vec_metric <- transform_to_metric(coords_vec)$shape
 aoi <- create_area(coords)
 
 # Plot results
-plot(st_geometry(aoi), border = "blue", axes=TRUE)
-plot(st_geometry(coords_vec_metric), add = TRUE, col = "red")
+plot(sf::st_geometry(aoi), border = "blue", axes=TRUE)
+plot(sf::st_geometry(coords_vec_metric), add = TRUE, col = "red")
 }

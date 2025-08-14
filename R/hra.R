@@ -1,8 +1,16 @@
-#' Habitat Risk Assessment (HRA): single species or ecosystem
+#' Habitat Risk Assessment (HRA)
 #'
-#' Single-species: `raster_list` is a depth-2 named list: stressor -> attribute rasters.
-#' Ecosystem: `raster_list` is depth-3: species -> stressor -> attribute rasters.
-#'
+#' Implements the Natural Capital Project’s InVEST Habitat Risk Assessment (HRA)
+#' model to estimate spatial risk from multiple stressors to a species/habitat
+#' (single-species mode) or across multiple species (ecosystem mode). For each
+#' stressor, the function combines Exposure (E) and Consequence (C) criteria—
+#' mixing mapped rasters and constant scores—using either the Euclidean or
+#' Multiplicative InVEST risk equations. Inputs can be nested lists of rasters
+#' (stressor → attributes; or species → stressor → attributes) plus a species
+#' distribution raster (or list) and a criteria table (or list). Rasters are
+#' auto-aligned to the species grid; outputs include per-stressor E/C maps,
+#' raw and classed risk maps, ecosystem risk (when applicable), and a
+#' `summary_stats` data frame. Optional reprojection to EPSG:4326 is supported.
 #' @param raster_list list
 #' @param species_distr SpatRaster (single) OR named list of SpatRasters (ecosystem).
 #'        If an element is a list, the first SpatRaster within it will be used.

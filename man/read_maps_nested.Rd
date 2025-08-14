@@ -7,19 +7,19 @@
 read_maps_nested(dir_path)
 }
 \arguments{
-\item{dir_path}{`character(1)`. Path to the root directory containing your spatial data.
-Subdirectories will be traversed recursively and represented as nested list elements.}
+\item{dir_path}{character(1). Path to the root directory containing spatial data.}
 }
 \value{
-A `list` of arbitrary depth:
+A nested `list`:
   - Intermediate elements are named by subdirectory names and contain further lists.
-  - Leaf elements are named by file basenames and contain `SpatRaster` or `sf` objects.
+  - Leaf elements are named by file basenames (without extensions) and contain
+    `SpatRaster` or `sf` objects.
 }
 \description{
-This function scans a root directory (non‐recursively at each level) for raster
-files (`.tif`, `.tiff`) and shapefiles (`.shp`), reads them as `terra::SpatRaster`
-or `sf` objects, respectively, and builds a nested R list whose names correspond
-to folder and file basenames (without extensions).
+Scans a root directory (non-recursively at each level) for raster files
+(`.tif`, `.tiff`) and vector files (`.shp`; also supports `.gpkg`, `.geojson`)
+and reads them as `terra::SpatRaster` or `sf` objects. Subdirectories are
+traversed recursively; the returned list mirrors the folder structure.
 }
 \examples{
 \dontrun{

@@ -6,7 +6,7 @@
 #' @param x An `sf` object or data frame with longitude/latitude in the first two columns.
 #' @param crs Integer or string; EPSG or proj string for the metric transform. If `NULL`, UTM is chosen automatically.
 #' @param area_type One of `"convex_hull"` or `"bbox"`. Default `"convex_hull"`.
-#' @param buffer_frac Numeric ≥ 0; fractional expansion relative to the centroid (e.g., 0.5 = +50%).
+#' @param buffer_frac Numeric ≥ 0; fractional expansion relative to the centroid (e.g., 0.5 = +50 percent).
 #' @param quiet Logical; suppress informative messages. Default `TRUE`.
 #' @return An `sf` POLYGON.
 #' @importFrom sf st_crs st_bbox st_sfc st_polygon st_as_sf

@@ -2,79 +2,111 @@
 % Please edit documentation in R/risa_prep.R
 \name{risa_prep}
 \alias{risa_prep}
-\title{Prepare RISA kernel and overlap maps}
+\title{Prepare and generate maps for risk assessment analysis}
 \usage{
 risa_prep(
   x,
   y,
   area = NULL,
   n_classes = 3,
-  output_layer_type = "both",
+  output_layer_type = c("both", "shp", "raster"),
   radius = NULL,
-  output_decimal_crs = FALSE
+  radius_method = c("nndist", "ppl", "fixed"),
+  group_x = NULL,
+  group_y = NULL,
+  group_size_x = NULL,
+  group_size_y = NULL,
+  pixel_size = NULL,
+  dimyx = c(512, 512),
+  exclude_lowest = TRUE,
+  lowest_prop = 0.05,
+  area_strategy = c("stressor", "species", "union"),
+  area_type = c("convex_hull", "bbox"),
+  area_buffer_frac = 0.5,
+  return_crs = c("metric", "4326"),
+  overlap_method = c("product", "sum", "geom_mean", "max"),
+  quiet = TRUE
 )
 }
 \arguments{
-\item{x}{Species input as `sf`, data frame, or list.}
+\item{x}{Species input: `sf`, data.frame, or a list of `sf`. If a data.frame/sf,
+you can split it by `group_x` into multiple species layers.}
 
-\item{y}{Stressor input as `sf`, data frame, or list.}
+\item{y}{Stressor input: `sf`, data.frame, or a list of `sf`. If a data.frame/sf,
+you can split it by `group_y` into multiple stressor layers.}
 
-\item{area}{Optional area polygon (`sf`); auto-computed if `NULL`.}
+\item{area}{Optional AOI polygon (`sf`) or `bbox`/data.frame; if `NULL`, it's computed.}
 
-\item{n_classes}{Integer number of classes.}
+\item{n_classes}{Integer number of classes for kernel reclassification (default 3).}
 
-\item{output_layer_type}{Character; one of `"shp"`, `"raster"`, or `"both"`.}
+\item{output_layer_type}{One of `"shp"`, `"raster"`, or `"both"` (default `"both"`).}
 
-\item{radius}{Numeric smoothing bandwidth.}
+\item{radius}{KDE bandwidth (projected units). If `NULL`, uses `radius_method`.}
 
-\item{output_decimal_crs}{Logical; if `TRUE`, reproject outputs to EPSG:4326.}
+\item{radius_method}{One of `"nndist"` (default), `"ppl"`, or `"fixed"`.}
+
+\item{group_x, group_y}{Optional grouping columns to split `x`/`y` when they aren't lists.}
+
+\item{group_size_x, group_size_y}{Optional numeric weight columns for KDE.}
+
+\item{pixel_size}{Optional pixel size (meters) for the KDE grid; else `dimyx` is used.}
+
+\item{dimyx}{Grid size (ny, nx) for KDE when `pixel_size` is `NULL` (default c(512,512)).}
+
+\item{exclude_lowest, lowest_prop}{Passed to `reclass_matrix()` (defaults TRUE, 0.05).}
+
+\item{area_strategy}{`"stressor"` (default), `"species"`, or `"union"` for auto AOI.}
+
+\item{area_type}{`"convex_hull"` (default) or `"bbox"` for auto AOI.}
+
+\item{area_buffer_frac}{Fractional expansion for auto AOI (default 0.5).}
+
+\item{return_crs}{`"metric"` (default) or `"4326"` to reproject outputs to WGS84.}
+
+\item{overlap_method}{Combination rule for overlap: one of `"product"`, `"sum"`,
+`"geom_mean"`, or `"max"` (default `"product"`). Passed to `get_overlap_kernel()`.}
+
+\item{quiet}{Suppress messages (default TRUE).}
 }
 \value{
-A list with lists for `species_kernel_maps`, `stressor_kernel_maps`, `overlap_maps`, and `area_of_interest`.
+A list with: `species_distributions`, `stressor_distributions`,
+  `species_kernel_maps`, `stressor_kernel_maps`, `overlap_maps`, and `area_of_interest`.
 }
 \description{
-Generates kernel density maps for species and stressors, merges, and computes overlap within an area of interest.
+Generates kernel density maps for species and stressors, plus overlap maps,
+within an area of interest (auto or user-supplied).
 }
 \examples{
 # Creating test data
 spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
-                           lat = rnorm(80, 0, 10), species = "sp1"),
-                data.frame(long = rnorm(60, 0, 10),
-                           lat = rnorm(60, 0, 10), species = "sp2"))
-str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
-                           lat = rnorm(100, 0, 10), stressor = "trawling"),
-                data.frame(long = rnorm(50, 0, 10),
-                           lat = rnorm(100, 0, 5), stressor = "gillnet"))
-
+lat = rnorm(80, 0, 10), species = "sp1"),
+data.frame(long = rnorm(60, 0, 10),
+lat = rnorm(60, 0, 10), species = "sp2"))
+str_df <- rbind(data.frame(long = rnorm(100, 0, 10),
+lat = rnorm(100, 0, 10), stressor = "trawling"),
+data.frame(long = rnorm(50, 0, 10),
+lat = rnorm(100, 0, 5), stressor = "gillnet"))
 # Create kernel maps of species and stressor distributions and overlap maps
 risa_maps <- risa_prep(spp_df, str_df)
 
 # Species and Stressor distributions
 dev.off()
 par(mfrow = c(2,2))
-
 plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 1")
 plot(risa_maps$species_kernel_maps$sp1$shp, add = TRUE)
-
 plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 2")
 plot(risa_maps$species_kernel_maps$sp2$shp, add = TRUE)
-
 plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Gillnet")
 plot(risa_maps$stressor_kernel_maps$gillnet$shp, add = TRUE, col=c("lightgreen", "green", "darkgreen"))
-
 plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Trawling")
 plot(risa_maps$stressor_kernel_maps$trawling$shp, add = TRUE, col=c("lightgreen", "green", "darkgreen"))
-
 # Overlap maps
 plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Gillnet")
-plot(risa_maps$overlap_maps$sp1$gillnet, add = TRUE, col=c("yellow", "orange", "red"))
-
+plot(risa_maps$overlap_maps$sp1$gillnet$shp, add = TRUE, col=c("yellow", "orange", "red"))
 plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Gillnet")
-plot(risa_maps$overlap_maps$sp2$gillnet, add = TRUE, col=c("yellow", "orange", "red"))
-
+plot(risa_maps$overlap_maps$sp2$gillnet$shp, add = TRUE, col=c("yellow", "orange", "red"))
 plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Trawling")
-plot(risa_maps$overlap_maps$sp1$gillnet, add = TRUE, col=c("yellow", "orange", "red"))
-
+plot(risa_maps$overlap_maps$sp1$trawling$shp, add = TRUE, col=c("yellow", "orange", "red"))
 plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Trawling")
-plot(risa_maps$overlap_maps$sp2$gillnet, add = TRUE, col=c("yellow", "orange", "red"))
+plot(risa_maps$overlap_maps$sp2$trawling$shp, add = TRUE, col=c("yellow", "orange", "red"))
 }

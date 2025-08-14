@@ -4,22 +4,33 @@
 \alias{export_maps}
 \title{Export nested list of maps to files}
 \usage{
-export_maps(x, out_dir, path = character(), zip_export = FALSE)
+export_maps(
+  x,
+  out_dir,
+  path = character(),
+  zip_export = FALSE,
+  vector_driver = c("ESRI Shapefile", "GPKG", "GeoJSON")
+)
 }
 \arguments{
-\item{x}{A nested list of `SpatRaster`, `sf`, or further lists.}
+\item{x}{A nested list containing `SpatRaster`, `sf`/`sfc`, or further lists.}
 
 \item{out_dir}{Character path to output directory.}
 
-\item{path}{Internal use: character vector of path under recursion.}
+\item{path}{Internal use: character vector of names under recursion.}
 
-\item{zip_export}{Logical; if `TRUE`, zip the top-level output.}
+\item{zip_export}{Logical; if `TRUE`, zip the top-level output directory.}
+
+\item{vector_driver}{One of `"ESRI Shapefile"`, `"GPKG"`, or `"GeoJSON"`.
+Controls the format for vector outputs. Default `"ESRI Shapefile"`.}
 }
 \value{
 Invisibly returns `NULL`. Files are written to `out_dir`.
 }
 \description{
-Recursively writes `SpatRaster` and `sf` layers, respectively as `.tif` and shapefiles, from a nested list to disk, optionally zipping.
+Recursively writes `terra::SpatRaster` (.tif) and vector layers using the
+chosen driver (ESRI Shapefile, GPKG, or GeoJSON) from a nested list to disk.
+Optionally zips the top-level output directory.
 }
 \examples{
 # Creating test data

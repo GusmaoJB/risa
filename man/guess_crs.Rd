@@ -4,22 +4,27 @@
 \alias{guess_crs}
 \title{Guess coordinate reference system from geographic bounds}
 \usage{
-guess_crs(shp)
+guess_crs(shp, lon = NULL, lat = NULL, quiet = TRUE)
 }
 \arguments{
-\item{shp}{An `sf` object or data frame with longitude/latitude in first two columns.}
+\item{shp}{An `sf` object or a data frame with longitude/latitude.}
+
+\item{lon, lat}{Optional column names or indices for data frames; if omitted,
+the first two numeric columns are used.}
+
+\item{quiet}{Logical; suppress messages (default `TRUE`).}
 }
 \value{
-Integer EPSG code (4326) or `NA` if bounds are invalid.
+Integer EPSG code (e.g., `4326L`) or `NA_integer_` if not guessed.
 }
 \description{
-If coordinates fall within longitude [-180,180] and latitude [-90,90], returns EPSG:4326; else `NA`.
+If coordinates look like degrees (lon in [-180, 180], lat in [-90, 90]),
+returns EPSG:4326; else `NA`. If `shp` is `sf` with a geographic CRS set,
+returns its EPSG when available.
 }
 \examples{
 # Create test data
 coords <- data.frame(long = c(1,2,2,4), lat = c(4,4,2,2))
-
 # Gussing coordinates
 guess_crs(coords)
-
 }

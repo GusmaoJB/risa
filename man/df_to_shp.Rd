@@ -4,20 +4,42 @@
 \alias{df_to_shp}
 \title{Convert a data.frame to an sf object}
 \usage{
-df_to_shp(df)
+df_to_shp(
+  df,
+  lon = NULL,
+  lat = NULL,
+  crs = NULL,
+  guess = TRUE,
+  keep_coords = TRUE,
+  drop_na = TRUE,
+  quiet = TRUE
+)
 }
 \arguments{
-\item{df}{A data.frame with at least two numeric columns (lon, lat).}
+\item{df}{A data.frame with at least two numeric columns for coordinates, or an `sf` (returned as-is).}
+
+\item{lon, lat}{Optional column names or indices for longitude and latitude.
+If omitted, will try common names (lon/long/longitude/x, lat/latitude/y), else the first two numeric columns.}
+
+\item{crs}{Optional CRS (e.g., EPSG code like 4326, WKT, or an `sf::crs` object).}
+
+\item{guess}{Logical; if `TRUE`, try `guess_crs()` when `crs` is not provided. Default `TRUE`.}
+
+\item{keep_coords}{Logical; keep original lon/lat columns (`TRUE`, default) or drop them (`FALSE`).}
+
+\item{drop_na}{Logical; drop rows with non-finite lon/lat (`TRUE`, default). If `FALSE`, will error on NA/Inf.}
+
+\item{quiet}{Logical; suppress messages/warnings (default `TRUE`). Set to `FALSE` for informative messages.}
 }
 \value{
 An `sf` object with geometry column and original attributes.
 }
 \description{
-Builds an `sf` point layer from lon/lat columns of a data frame, guessing CRS via `guess_crs()`.
+Builds an `sf` POINT layer from longitude/latitude columns of a data frame.
+If `crs` is not supplied, tries `guess_crs()`. If guessing fails,
+falls back to EPSG:4326 only when coordinates look like degrees; otherwise uses `NA` CRS.
 }
 \examples{
-# example code
 df <- data.frame(long = c(1,2,2,4), lat = c(4,4,2,2))
 vec <- df_to_shp(df)
-class(vec)
 }

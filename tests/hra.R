@@ -11,6 +11,14 @@
 #' @param shp_list A list of `sf` objects.
 #' @param group_size Optional name of a column in each `sf` to repeat per vertex and include in the output.
 #' @returns A data.frame with columns `X`, `Y`, `group`, and optionally `group_size`.
+#' @examples
+#' # Create test data
+#' vec1 <- df_to_shp(data.frame(long = c(1,2,2,4), lat = c(4,4,2,2)))
+#' vec2 <- df_to_shp(data.frame(long = c(2,5,4,6), lat = c(4,4,2,2)))
+#' vec_list <- list(vec1, vec2)
+#'
+#' # Convert vector list into data.frame
+#' df <- merge_shp(vec_list)
 #' @export
 merge_shp <- function(shp_list, group_size = NULL) {
   if (!is.list(shp_list) || length(shp_list) == 0L) {
@@ -85,8 +93,7 @@ merge_shp <- function(shp_list, group_size = NULL) {
 #' @importFrom sf st_as_sf st_crs
 #' @examples
 #' df <- data.frame(long = c(1,2,2,4), lat = c(4,4,2,2))
-#' vec <- df_to_shp(df)             # silent
-#' vec2 <- df_to_shp(df, quiet=FALSE) # verbose
+#' vec <- df_to_shp(df)
 #' @export
 df_to_shp <- function(df,
                       lon = NULL, lat = NULL,
@@ -273,6 +280,11 @@ list_depth_base <- function(x) {
 #' @param quiet Logical; suppress messages (default `TRUE`).
 #' @return Integer EPSG code (e.g., `4326L`) or `NA_integer_` if not guessed.
 #' @importFrom sf st_coordinates st_crs st_is_longlat st_geometry
+#' @examples
+#' # Create test data
+#' coords <- data.frame(long = c(1,2,2,4), lat = c(4,4,2,2))
+#' # Gussing coordinates
+#' guess_crs(coords)
 #' @export
 guess_crs <- function(shp, lon = NULL, lat = NULL, quiet = TRUE) {
   # 1) Fast path: sf with a known geographic CRS
@@ -343,6 +355,13 @@ guess_crs <- function(shp, lon = NULL, lat = NULL, quiet = TRUE) {
 #' @param quiet Logical; suppress informative messages. Default `TRUE`.
 #' @return A list with: `shape` (transformed `sf`), `coordinates` (matrix from `st_coordinates()`), and `crs` (EPSG or `NA`).
 #' @importFrom sf st_crs st_set_crs st_coordinates st_transform st_geometry st_bbox st_sfc st_point st_is_longlat st_as_sfc
+#' @examples
+#' # Create test data
+#' coords <- data.frame(long = c(1,2,2,4), lat = c(4,4,2,2))
+#' coords_vec <- df_to_shp(coords)
+#'
+#' # Transform vector to a metric projection
+#' transform_to_metric(coords_vec)
 #' @export
 transform_to_metric <- function(
     shp,
@@ -520,6 +539,18 @@ convert_to_decimal_degrees <- function(obj, method = "near", quiet = TRUE) {
 #' @param quiet Logical; suppress informative messages. Default `TRUE`.
 #' @return An `sf` POLYGON.
 #' @importFrom sf st_crs st_bbox st_sfc st_polygon st_as_sf
+#' @examples
+#' # Create test data
+#' coords <- data.frame(long = c(1,2,2,4), lat = c(4,4,2,2))
+#' coords_vec <- df_to_shp(coords)
+#' coords_vec_metric <- transform_to_metric(coords_vec)$shape
+#'
+#' # Create area of interest (default: convex hull)
+#' aoi <- create_area(coords)
+#'
+#' # Plot results
+#' plot(sf::st_geometry(aoi), border = "blue", axes=TRUE)
+#' plot(sf::st_geometry(coords_vec_metric), add = TRUE, col = "red")
 #' @export
 create_area <- function(x,
                         crs = NULL,
@@ -702,6 +733,15 @@ reclass_matrix <- function(raster, n_classes = 3, exclude_lowest = TRUE, lowest_
 #' @importFrom spatstat.geom as.owin ppp nndist
 #' @importFrom spatstat.explore density.ppp bw.ppl
 #' @importFrom terra rast crs classify as.polygons mask vect project
+#' @examples
+#' # Creating test data
+#' df <- data.frame(long = rnorm(120, 0, 10), lat = rnorm(120, 0, 10))
+#'
+#' # Generating reclassified Kernel densities estimates (3 classes)
+#' kde <- get_class_kernel(df)
+#'
+#' # Plot KDE map
+#' plot(kde)
 #' @export
 get_class_kernel <- function(
     x,
@@ -1208,68 +1248,116 @@ risa_prep <- function(
 
 #' Habitat Risk Assessment (HRA): single species or ecosystem
 #'
-#' Computes Exposure/Consequence and Risk for a single species (2-level `raster_list`)
-#' or multiple species (3-level `raster_list`), and returns per-stressor maps plus
-#' cumulative risk. Includes a `summary_stats` data.frame.
+#' Single-species: `raster_list` is a depth-2 named list: stressor -> attribute rasters.
+#' Ecosystem: `raster_list` is depth-3: species -> stressor -> attribute rasters.
 #'
-#' @param raster_list For single species: named list of lists \[stressor -> attribute rasters\].
-#'   For ecosystem: named list \[species -> (stressor -> attribute rasters)\].
-#'   Each attribute raster is a single-layer `terra::SpatRaster` on the same grid as the species distribution.
-#' @param species_distr For single species: `SpatRaster` presence mask (non-NA = presence).
-#'   For ecosystem: **list** of `SpatRaster` (one per species), names must match `raster_list`.
-#' @param criteria For single species: a data.frame with columns
-#'   `STRESSOR, ATTRIBUTES, RATING, DQ, WEIGHT, E/C`.
-#'   For ecosystem: **list** of such data.frames, names must match species.
+#' @param raster_list list
+#' @param species_distr SpatRaster (single) OR named list of SpatRasters (ecosystem).
+#'        If an element is a list, the first SpatRaster within it will be used.
+#' @param criteria data.frame (single) OR named list of data.frames (ecosystem).
 #' @param equation c("euclidean","multiplicative")
-#' @param r_max Integer (1–10), max criteria score for thresholds.
-#' @param n_overlap Optional # of stressors used in cumulative-risk thresholds.
-#'   Defaults to the number of unique stressors in `criteria` (single) or across species (ecosystem).
-#' @param output_decimal_crs Logical; if TRUE, reprojects rasters in the output to EPSG:4326
-#'   (nearest-neighbor to preserve classes). Summary stats are computed pre-reprojection.
-#' @return A list of class `"risaHRA"`. In single-species mode:
-#'   per-stressor sublists + `total_raw`, `total`, and `summary_stats`.
-#'   In ecosystem mode: one such sublist per species plus `ecosys_risk_raw`,
-#'   `ecosys_risk_classified`, and combined `summary_stats` (with `SPECIES`).
-#' @importFrom terra ifel mosaic mask classify project compareGeom global freq nlyr resample
+#' @param r_max integer in 1..10
+#' @param n_overlap optional number of stressors (default inferred)
+#' @param output_decimal_crs logical; reproject outputs to EPSG:4326 if TRUE
+#' @return "risaHRA" list with per-stressor maps, totals, and summary_stats
+#' @importFrom terra compareGeom project mosaic mask ifel freq global
+#' @examples
+#' # example code
+#'
+#' # Creating test data
+#' set.seed(12)
+#' spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
+#' lat = rnorm(80, 0, 10), species = "species1"),
+#' data.frame(long = rnorm(60, 0, 10),
+#' lat = rnorm(60, 0, 10), species = "species2"))
+#' str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
+#' lat = rnorm(100, 0, 10), stressor = "stressor1"),
+#' data.frame(long = rnorm(50, 0, 10),
+#' lat = rnorm(100, 0, 5), stressor = "stressor2"))
+#' # Create kernel maps of species and stressor distributions and overlap maps
+#' risa_maps <- risa_prep(spp_df, str_df)
+#' #Load example data
+#' path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
+#' df <- read.csv(path)
+#' #Reshape criteria table
+#' crit_list <- criteria_reshape(df)
+#' # Selecting spatially explicit criteria ratings
+#' # Note that the rasters in the stressors's list are named after the respective attribute in the criteria table.
+#' rast_list <- list(
+#' species1 = list(
+#' stressor1 = list(
+#' intensity = risa_maps$stressor_kernel_maps$stressor1$raster,
+#' `likelihood of interaction`=risa_maps$overlap_maps$species1$stressor1$raster),
+#' stressor2 = list(
+#' intensity = risa_maps$stressor_kernel_maps$stressor2$raster,
+#' `likelihood of interaction`=risa_maps$overlap_maps$species1$stressor2$raster)
+#' ),
+#' species2 = list(
+#' stressor1 = list(
+#' intensity = risa_maps$stressor_kernel_maps$stressor1$raster,
+#' `likelihood of interaction`=risa_maps$overlap_maps$species2$stressor1$raster),
+#' stressor2 = list(
+#' intensity = risa_maps$stressor_kernel_maps$stressor2$raster,
+#' `likelihood of interaction`=risa_maps$overlap_maps$species2$stressor2$raster)
+#' )
+#' )
+#'
+#' # Species' distributions rasters
+#' spp_dist <- list(species1 = risa_maps$species_distributions$species1$raster,
+#' species2 = risa_maps$species_distributions$species2$raster)
+#'
+#' # Simple example with one species and one stressor
+#' test1 <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]], equation = "euclidean")
+#' terra::plot(test1$total_raw)
+#' test1$summary_stats
+#'
+#' # Now with two species and two stressors
+#' many_test <- hra(rast_list, spp_dist, crit_list, equation = "euclidean")
+#' many_test$summary_stats
+#' terra::plot(many_test$species1$total_raw)
+#' terra::plot(many_test$species2$total_raw)
 #' @export
 hra <- function(
     raster_list, species_distr, criteria,
-    equation = c("euclidean", "multiplicative"),
+    equation = c("euclidean","multiplicative"),
     r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE
 ) {
   depth <- list_depth_base(raster_list)
-  if (!(depth %in% c(2L, 3L))) {
-    stop("'raster_list' must have depth 2 (single species) or 3 (ecosystem).")
-  }
+  equation <- match.arg(equation)
 
-  # -------------------------- internal helpers --------------------------------
+  # ---------- helpers ----------
   .check_criteria <- function(df_or_list) {
     req <- c("STRESSOR","ATTRIBUTES","RATING","DQ","WEIGHT","E/C")
     if (is.data.frame(df_or_list)) {
-      df <- df_or_list
-      if (names(df)[1] != "STRESSOR") {
-        message("'criteria' not in expected long format. Trying criteria_reshape()...")
-        df <- criteria_reshape(df)
-        if (length(df) > 1L) stop("Multiple species detected in criteria; pass a list for ecosystem mode.")
-        df <- df[[1]]
-      }
-      if (!all(req %in% names(df))) stop("Criteria must contain: ", paste(req, collapse = ", "))
-      return(df)
-    } else if (is.list(df_or_list)) {
-      out <- lapply(df_or_list, function(d) {
-        if (!is.data.frame(d)) stop("Each criteria element must be a data.frame.")
-        if (names(d)[1] != "STRESSOR") {
-          d2 <- criteria_reshape(d)
-          if (length(d2) != 1L) stop("Each criteria element must correspond to exactly one species.")
-          d <- d2[[1]]
+      if (!all(req %in% names(df_or_list))) stop("Criteria must contain: ", paste(req, collapse=", "))
+      return(df_or_list)
+    }
+    if (is.list(df_or_list)) {
+      lapply(df_or_list, function(d) {
+        if (!is.data.frame(d) || !all(req %in% names(d))) {
+          stop("Each criteria element must contain: ", paste(req, collapse=", "))
         }
-        if (!all(req %in% names(d))) stop("Each criteria table must contain: ", paste(req, collapse = ", "))
         d
       })
-      return(out)
-    } else {
-      stop("'criteria' must be a data.frame (single) or a list of data.frames (ecosystem).")
+    } else stop("'criteria' must be a data.frame (single) or list (ecosystem).")
+  }
+
+  .align_to <- function(src, template, categorical = TRUE) {
+    if (terra::compareGeom(src, template, stopOnError = FALSE)) return(src)
+    m <- if (categorical) "near" else "bilinear"
+    terra::project(src, template, method = m)
+  }
+
+  # find/extract a SpatRaster if user passed a list container
+  .as_raster <- function(x) {
+    if (inherits(x, "SpatRaster")) return(x)
+    if (is.list(x)) {
+      for (el in x) {
+        r <- .as_raster(el)
+        if (inherits(r, "SpatRaster")) return(r)
+      }
     }
+    NULL
   }
 
   .compute_summary_stats_single <- function(rr, total_risk_raw, total_class) {
@@ -1279,106 +1367,96 @@ hra <- function(
       C  <- rr[[st]]$C_criteria
       Rr <- rr[[st]]$Risk_map_raw
       Rc <- rr[[st]]$Risk_map
+      gE <- terra::global(E,  c("min","max","mean"), na.rm=TRUE)
+      gC <- terra::global(C,  c("min","max","mean"), na.rm=TRUE)
+      gR <- terra::global(Rr, c("min","max","mean"), na.rm=TRUE)
 
-      gE <- terra::global(E,  c("min","max","mean"), na.rm = TRUE)
-      gC <- terra::global(C,  c("min","max","mean"), na.rm = TRUE)
-      gR <- terra::global(Rr, c("min","max","mean"), na.rm = TRUE)
-
-      fq <- terra::freq(Rc, useNA = "no")
+      fq <- terra::freq(Rc)  # no useNA in terra
       cnt <- c(`0`=0,`1`=0,`2`=0,`3`=0)
       if (!is.null(fq) && nrow(fq)) {
-        vv <- as.character(fq[,"value"]); cnt[vv] <- fq[,"count"]
+        vv <- as.character(fq[, "value"]); cnt[vv] <- fq[, "count"]
       }
       tot <- sum(cnt)
 
       data.frame(
         STRESSOR = st,
-        E_min   = as.numeric(gE[1,"min"]),
-        E_max   = as.numeric(gE[1,"max"]),
-        E_mean  = as.numeric(gE[1,"mean"]),
-        C_min   = as.numeric(gC[1,"min"]),
-        C_max   = as.numeric(gC[1,"max"]),
-        C_mean  = as.numeric(gC[1,"mean"]),
-        R_min   = as.numeric(gR[1,"min"]),
-        R_max   = as.numeric(gR[1,"max"]),
-        R_mean  = as.numeric(gR[1,"mean"]),
-        `R%high`   = if (tot) 100 * cnt["3"]/tot else NA_real_,
-        `R%medium` = if (tot) 100 * cnt["2"]/tot else NA_real_,
-        `R%low`    = if (tot) 100 * cnt["1"]/tot else NA_real_,
-        `R%None`   = if (tot) 100 * cnt["0"]/tot else NA_real_
+        E_min  = as.numeric(gE[1,"min"]), E_max = as.numeric(gE[1,"max"]), E_mean = as.numeric(gE[1,"mean"]),
+        C_min  = as.numeric(gC[1,"min"]), C_max = as.numeric(gC[1,"max"]), C_mean = as.numeric(gC[1,"mean"]),
+        R_min  = as.numeric(gR[1,"min"]), R_max = as.numeric(gR[1,"max"]), R_mean = as.numeric(gR[1,"mean"]),
+        `R%high`   = if (tot) 100*cnt["3"]/tot else NA_real_,
+        `R%medium` = if (tot) 100*cnt["2"]/tot else NA_real_,
+        `R%low`    = if (tot) 100*cnt["1"]/tot else NA_real_,
+        `R%None`   = if (tot) 100*cnt["0"]/tot else NA_real_
       )
     })
-    per_stressor <- do.call(rbind, rows)
+    per <- do.call(rbind, rows)
 
-    gRt <- terra::global(total_risk_raw, c("min","max","mean"), na.rm = TRUE)
-    fqt <- terra::freq(total_class, useNA = "no")
+    fqt <- terra::freq(total_class)
     cntt <- c(`0`=0,`1`=0,`2`=0,`3`=0)
     if (!is.null(fqt) && nrow(fqt)) {
-      vv <- as.character(fqt[,"value"]); cntt[vv] <- fqt[,"count"]
+      vv <- as.character(fqt[, "value"]); cntt[vv] <- fqt[, "count"]
     }
     tot <- sum(cntt)
 
     overall <- data.frame(
-      STRESSOR = "(FROM ALL STRESSORS)",
-      E_min   = min(per_stressor$E_min,   na.rm = TRUE),
-      E_max   = max(per_stressor$E_max,   na.rm = TRUE),
-      E_mean  = mean(per_stressor$E_mean, na.rm = TRUE),
-      C_min   = min(per_stressor$C_min,   na.rm = TRUE),
-      C_max   = max(per_stressor$C_max,   na.rm = TRUE),
-      C_mean  = mean(per_stressor$C_mean, na.rm = TRUE),
-      R_min   = as.numeric(gRt[1,"min"]),
-      R_max   = as.numeric(gRt[1,"max"]),
-      R_mean  = as.numeric(gRt[1,"mean"]),
-      `R%high`   = if (tot) 100 * cntt["3"]/tot else NA_real_,
-      `R%medium` = if (tot) 100 * cntt["2"]/tot else NA_real_,
-      `R%low`    = if (tot) 100 * cntt["1"]/tot else NA_real_,
-      `R%None`   = if (tot) 100 * cntt["0"]/tot else NA_real_
+      STRESSOR="(FROM ALL STRESSORS)",
+      E_min=min(per$E_min,na.rm=TRUE), E_max=max(per$E_max,na.rm=TRUE), E_mean=mean(per$E_mean,na.rm=TRUE),
+      C_min=min(per$C_min,na.rm=TRUE), C_max=max(per$C_max,na.rm=TRUE), C_mean=mean(per$C_mean,na.rm=TRUE),
+      R_min=min(per$R_min,na.rm=TRUE), R_max=max(per$R_max,na.rm=TRUE), R_mean=mean(per$R_mean,na.rm=TRUE),
+      `R%high`   = if (tot) 100*cntt["3"]/tot else NA_real_,
+      `R%medium` = if (tot) 100*cntt["2"]/tot else NA_real_,
+      `R%low`    = if (tot) 100*cntt["1"]/tot else NA_real_,
+      `R%None`   = if (tot) 100*cntt["0"]/tot else NA_real_
     )
-
-    rbind(overall, per_stressor)
+    rbind(overall, per)
   }
 
-  .hra_single <- function(rlist, sp_distr, crit, equation, r_max, n_overlap, output_decimal_crs) {
-    # validate basics
+  .single <- function(rlist, sp_distr, crit, equation, r_max, n_overlap, output_decimal_crs) {
     if (list_depth_base(rlist) != 2L) stop("Single-species mode requires depth-2 raster_list.")
-    if (!inherits(sp_distr, "SpatRaster")) stop("'species_distr' must be a SpatRaster.")
+
+    # Accept list containers for sp_distr
+    sp_distr <- .as_raster(sp_distr)
+    if (!inherits(sp_distr, "SpatRaster")) stop("'species_distr' must be or contain a SpatRaster.")
+
     crit <- .check_criteria(crit)
 
-    equation <- match.arg(equation)
     stressors <- unique(crit$STRESSOR)
     stressors <- stressors[!(is.na(stressors) | stressors %in% c("", "NA"))]
+    if (length(stressors) == 0L) stop("No stressors found in criteria (STRESSOR column).")
     if (is.null(n_overlap)) n_overlap <- length(stressors)
-    if (!setequal(names(rlist), stressors)) {
-      stop("Top-level names in 'raster_list' must match criteria STRESSOR values.")
+
+    if (is.null(names(rlist)) || any(!nzchar(names(rlist)))) {
+      stop("Top-level 'raster_list' must be a named list of stressors.")
     }
-    if (!is.numeric(r_max) || r_max < 1 || r_max > 10) stop("'r_max' must be in 1..10.")
+    if (!all(names(rlist) %in% stressors)) {
+      stop("Names in 'raster_list' must be a subset of criteria STRESSOR values.")
+    }
 
     sp_presence    <- terra::ifel(!is.na(sp_distr), 1, NA)
     sp_distr_zeros <- terra::ifel(!is.na(sp_distr), 0, NA)
     zero_r         <- sp_distr * 0
 
-    res <- list()
-    for (stressor in stressors) {
-      crit_stressor <- crit[is.na(crit$STRESSOR) | crit$STRESSOR %in% c("", "NA", stressor), ]
-      C_df <- crit_stressor[crit_stressor$`E/C` == "C", , drop = FALSE]
-      E_df <- crit_stressor[crit_stressor$`E/C` == "E", , drop = FALSE]
-      if (nrow(E_df) == 0L || nrow(C_df) == 0L) {
-        stop("Both E and C blocks must have at least one criterion for '", stressor, "'.")
+    res <- setNames(vector("list", length(names(rlist))), names(rlist))
+    m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
+
+    for (stressor in names(rlist)) {
+      crit_stressor <- crit[is.na(crit$STRESSOR) | crit$STRESSOR %in% c("", "NA", stressor), , drop=FALSE]
+      C_df <- crit_stressor[crit_stressor$`E/C` == "C", , drop=FALSE]
+      E_df <- crit_stressor[crit_stressor$`E/C` == "E", , drop=FALSE]
+      if (nrow(E_df) == 0L || nrow(C_df) == 0L) stop("Both E and C must have at least one criterion for '", stressor, "'.")
+
+      suppressWarnings({
+        E_df$DQ <- as.numeric(E_df$DQ); E_df$WEIGHT <- as.numeric(E_df$WEIGHT); E_df$RATING <- as.numeric(E_df$RATING)
+        C_df$DQ <- as.numeric(C_df$DQ); C_df$WEIGHT <- as.numeric(C_df$WEIGHT); C_df$RATING <- as.numeric(C_df$RATING)
+      })
+      if (any(E_df$DQ<=0 | E_df$WEIGHT<=0, na.rm=TRUE) || any(C_df$DQ<=0 | C_df$WEIGHT<=0, na.rm=TRUE)) {
+        stop("DQ/WEIGHT must be > 0 for stressor '", stressor, "'.")
       }
-      E_df$DQ <- as.numeric(E_df$DQ); E_df$WEIGHT <- as.numeric(E_df$WEIGHT)
-      C_df$DQ <- as.numeric(C_df$DQ); C_df$WEIGHT <- as.numeric(C_df$WEIGHT)
-      if (any(E_df$DQ<=0|E_df$WEIGHT<=0) || any(C_df$DQ<=0|C_df$WEIGHT<=0)) stop("DQ/WEIGHT must be > 0.")
 
-      E_df$RATING <- suppressWarnings(as.numeric(E_df$RATING))
-      C_df$RATING <- suppressWarnings(as.numeric(C_df$RATING))
-
-      E_const  <- E_df[!is.na(E_df$RATING), , drop = FALSE]
-      C_const  <- C_df[!is.na(C_df$RATING), , drop = FALSE]
-      E_mapped <- E_df[ is.na(E_df$RATING), , drop = FALSE]
-      C_mapped <- C_df[ is.na(C_df$RATING), , drop = FALSE]
-
-      E_numer_const <- if (nrow(E_const)) sum(E_const$RATING / (E_const$DQ * E_const$WEIGHT)) else 0
-      C_numer_const <- if (nrow(C_const)) sum(C_const$RATING / (C_const$DQ * C_const$WEIGHT)) else 0
+      E_const  <- E_df[!is.na(E_df$RATING), , drop=FALSE]
+      C_const  <- C_df[!is.na(C_df$RATING), , drop=FALSE]
+      E_mapped <- E_df[ is.na(E_df$RATING), , drop=FALSE]
+      C_mapped <- C_df[ is.na(C_df$RATING), , drop=FALSE]
 
       sum_weighted <- function(df_map) {
         if (!nrow(df_map)) return(zero_r)
@@ -1386,19 +1464,19 @@ hra <- function(
         for (i in seq_len(nrow(df_map))) {
           att <- df_map$ATTRIBUTES[i]
           r   <- rlist[[stressor]][[att]]
-          if (is.null(r) || !inherits(r, "SpatRaster")) {
-            stop("Missing/invalid raster for stressor '", stressor, "', attribute '", att, "'.")
+          if (is.null(r) || !inherits(r,"SpatRaster")) {
+            stop("Missing/invalid raster for '", stressor, "' / attribute '", att, "'.")
           }
-          if (!terra::compareGeom(sp_distr, r, stopOnError = FALSE)) {
-            stop("Raster grid for '", stressor, " / ", att, "' does not match 'species_distr'.")
-          }
+          r <- .align_to(r, sp_distr, categorical = TRUE)
           parts[[i]] <- r / (df_map$DQ[i] * df_map$WEIGHT[i])
         }
         Reduce(`+`, parts)
       }
 
-      E_numer_rast <- sum_weighted(E_mapped)
-      C_numer_rast <- sum_weighted(C_mapped)
+      E_numer_const <- if (nrow(E_const)) sum(E_const$RATING / (E_const$DQ * E_const$WEIGHT)) else 0
+      C_numer_const <- if (nrow(C_const)) sum(C_const$RATING / (C_const$DQ * C_const$WEIGHT)) else 0
+      E_numer_rast  <- sum_weighted(E_mapped)
+      C_numer_rast  <- sum_weighted(C_mapped)
 
       E_denom <- sum(1 / (E_df$DQ * E_df$WEIGHT))
       C_denom <- sum(1 / (C_df$DQ * C_df$WEIGHT))
@@ -1406,18 +1484,15 @@ hra <- function(
       E_score_raster <- (E_numer_const + E_numer_rast) / E_denom
       C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
 
-      E_map <- terra::mosaic(E_score_raster, sp_distr_zeros, fun = "first")
-      C_map <- terra::mosaic(terra::mask(C_score_raster, sp_distr), sp_distr_zeros, fun = "first")
+      E_map <- terra::mosaic(E_score_raster, sp_distr_zeros, fun="first")
+      C_map <- terra::mosaic(terra::mask(C_score_raster, sp_distr), sp_distr_zeros, fun="first")
 
-      if (equation == "multiplicative") {
-        m_jkl    <- r_max^2
-        risk_raw <- (C_score_raster * E_score_raster) * sp_presence
+      risk_raw <- if (equation=="multiplicative") {
+        (C_score_raster * E_score_raster) * sp_presence
       } else {
-        m_jkl    <- sqrt(2 * (r_max - 1)^2)
-        risk_raw <- sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
+        sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
       }
-      risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun = "first")
-
+      risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
       risk_cls <- terra::ifel(
         risk_raw == 0, 0,
         terra::ifel(risk_raw < (1/3)*m_jkl, 1,
@@ -1439,17 +1514,14 @@ hra <- function(
                   terra::ifel(total_raw < (2/3)*m_jkl*n_overlap, 2, 3))
     )
 
-    # summary (pre-reprojection)
     res$total_raw     <- total_raw
     res$total         <- total_cls
     res$summary_stats <- .compute_summary_stats_single(res, total_raw, total_cls)
 
     if (isTRUE(output_decimal_crs)) {
-      for (st in names(res)) {
-        if (is.list(res[[st]])) {
-          for (nm in c("E_criteria","C_criteria","Risk_map_raw","Risk_map")) {
-            res[[st]][[nm]] <- convert_to_decimal_degrees(res[[st]][[nm]])
-          }
+      for (st in names(res)) if (is.list(res[[st]])) {
+        for (nm in c("E_criteria","C_criteria","Risk_map_raw","Risk_map")) {
+          res[[st]][[nm]] <- convert_to_decimal_degrees(res[[st]][[nm]])
         }
       }
       res$total_raw <- convert_to_decimal_degrees(total_raw)
@@ -1460,12 +1532,9 @@ hra <- function(
     res
   }
 
-  # -------------------------- single vs ecosystem -----------------------------
-  equation <- match.arg(equation)
-
+  # ---------- dispatch ----------
   if (depth == 2L) {
-    # single species
-    return(.hra_single(
+    return(.single(
       rlist = raster_list,
       sp_distr = species_distr,
       crit = .check_criteria(criteria),
@@ -1477,195 +1546,199 @@ hra <- function(
   }
 
   # ecosystem mode (depth 3)
-  if (!is.list(species_distr)) stop("'species_distr' must be a list of SpatRasters in ecosystem mode.")
-  if (!is.list(criteria))      stop("'criteria' must be a list of data.frames in ecosystem mode.")
-
+  if (depth != 3L) stop("'raster_list' must be depth 2 (single) or 3 (ecosystem).")
+  if (!is.list(species_distr) || !is.list(criteria)) {
+    stop("In ecosystem mode, 'species_distr' and 'criteria' must be named lists matching raster_list species.")
+  }
   species <- names(raster_list)
-  if (is.null(species) || any(!nzchar(species))) stop("Top-level 'raster_list' must be a named list of species.")
-  if (!setequal(species, names(species_distr))) stop("Names of 'species_distr' must match 'raster_list' species.")
-  if (!setequal(species, names(criteria)))      stop("Names of 'criteria' must match 'raster_list' species.")
+  if (!setequal(species, names(species_distr)) || !setequal(species, names(criteria))) {
+    stop("Species names must match across raster_list, species_distr, and criteria.")
+  }
 
-  # Determine default n_overlap from the union of stressors across species
+  # Coerce species distributions to SpatRaster and pick a template grid
+  sd <- lapply(species, function(sp) .as_raster(species_distr[[sp]]))
+  names(sd) <- species
+  if (any(!vapply(sd, inherits, logical(1), "SpatRaster"))) {
+    stop("All 'species_distr' entries must be or contain a SpatRaster.")
+  }
+  template <- sd[[1]]
+
+  # infer n_overlap from union of stressors
   if (is.null(n_overlap)) {
     all_stressors <- unique(unlist(lapply(criteria, function(df) {
-      df2 <- .check_criteria(df); df2$STRESSOR
+      df$STRESSOR[!(is.na(df$STRESSOR) | df$STRESSOR %in% c("", "NA"))]
     })))
-    all_stressors <- all_stressors[!(is.na(all_stressors) | all_stressors %in% c("", "NA"))]
     n_overlap <- length(all_stressors)
   }
 
-  results <- list()
-  for (sp in species) {
-    results[[sp]] <- .hra_single(
-      rlist = raster_list[[sp]],
-      sp_distr = species_distr[[sp]],
-      crit = .check_criteria(criteria[[sp]]),
-      equation = equation,
-      r_max = r_max,
-      n_overlap = n_overlap,
-      output_decimal_crs = FALSE  # postpone proj until after eco stats
-    )
-  }
+  # run single HRA per species
+  results <- lapply(species, function(sp) {
+    .single(raster_list[[sp]], sd[[sp]], criteria[[sp]],
+            equation, r_max, n_overlap, FALSE)
+  })
+  names(results) <- species
 
-  # Ecosystem mask (union of species presence)
-  presences <- lapply(species_distr, function(d) terra::ifel(!is.na(d), 1, 0))
+  # Ecosystem presence mask on template grid (union of species)
+  presences <- lapply(sd, function(d) terra::ifel(!is.na(.align_to(d, template, TRUE)), 1, 0))
   sum_pres  <- Reduce(`+`, presences)
   eco_mask  <- terra::ifel(sum_pres > 0, 1, NA)
 
-  # Ecosystem risk: average of species totals (NA treated as 0 inside mask)
-  eco_raw <- NULL
+  # Ecosystem risk: average of species' total_raw, aligned to template
+  m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
+  eco_raw <- template * 0
   for (sp in species) {
     r <- results[[sp]]$total_raw
+    r <- .align_to(r, template, categorical = FALSE)   # continuous
     r <- terra::ifel(is.na(r), 0, r)
-    eco_raw <- if (is.null(eco_raw)) r else eco_raw + r
+    eco_raw <- eco_raw + r
   }
   eco_raw <- eco_raw / length(species)
-  eco_raw <- terra::mosaic(eco_raw, terra::ifel(!is.na(eco_mask), 0, NA), fun = "first")
-
-  # Classification thresholds use same m_jkl & n_overlap
-  if (equation == "multiplicative") {
-    m_jkl <- r_max^2
-  } else {
-    m_jkl <- sqrt(2 * (r_max - 1)^2)
-  }
+  eco_raw <- terra::mosaic(eco_raw, terra::ifel(!is.na(eco_mask), 0, NA), fun="first")
   eco_cls <- terra::ifel(
     eco_raw == 0, 0,
     terra::ifel(eco_raw < (1/3)*m_jkl*n_overlap, 1,
                 terra::ifel(eco_raw < (2/3)*m_jkl*n_overlap, 2, 3))
   )
 
-  # Build combined summary_stats (pre-reprojection)
+  # Summary table
   per_species_stats <- do.call(rbind, lapply(names(results), function(sp) {
     cbind.data.frame(SPECIES = sp, results[[sp]]$summary_stats, row.names = NULL)
   }))
-
-  # Ecosystem summary row
-  gEco <- terra::global(eco_raw, c("min","max","mean"), na.rm = TRUE)
-  fqE  <- terra::freq(eco_cls, useNA = "no")
+  gEco <- terra::global(eco_raw, c("min","max","mean"), na.rm=TRUE)
+  fqE  <- terra::freq(eco_cls)
   cntE <- c(`0`=0,`1`=0,`2`=0,`3`=0)
-  if (!is.null(fqE) && nrow(fqE)) {
-    vv <- as.character(fqE[,"value"]); cntE[vv] <- fqE[,"count"]
-  }
+  if (!is.null(fqE) && nrow(fqE)) { vv <- as.character(fqE[, "value"]); cntE[vv] <- fqE[, "count"] }
   totE <- sum(cntE)
   eco_row <- data.frame(
-    SPECIES = "ECOSYSTEM",
-    STRESSOR = "(FROM ALL STRESSORS)",
-    E_min = NA_real_, E_max = NA_real_, E_mean = NA_real_,
-    C_min = NA_real_, C_max = NA_real_, C_mean = NA_real_,
-    R_min = as.numeric(gEco[1,"min"]),
-    R_max = as.numeric(gEco[1,"max"]),
-    R_mean = as.numeric(gEco[1,"mean"]),
-    `R%high`   = if (totE) 100 * cntE["3"]/totE else NA_real_,
-    `R%medium` = if (totE) 100 * cntE["2"]/totE else NA_real_,
-    `R%low`    = if (totE) 100 * cntE["1"]/totE else NA_real_,
-    `R%None`   = if (totE) 100 * cntE["0"]/totE else NA_real_
+    SPECIES="ECOSYSTEM", STRESSOR="(FROM ALL STRESSORS)",
+    E_min=NA_real_, E_max=NA_real_, E_mean=NA_real_,
+    C_min=NA_real_, C_max=NA_real_, C_mean=NA_real_,
+    R_min=as.numeric(gEco[1,"min"]), R_max=as.numeric(gEco[1,"max"]), R_mean=as.numeric(gEco[1,"mean"]),
+    `R%high`   = if (totE) 100*cntE["3"]/totE else NA_real_,
+    `R%medium` = if (totE) 100*cntE["2"]/totE else NA_real_,
+    `R%low`    = if (totE) 100*cntE["1"]/totE else NA_real_,
+    `R%None`   = if (totE) 100*cntE["0"]/totE else NA_real_
   )
-
   summary_stats <- rbind(eco_row, per_species_stats)
 
-  # Attach ecosystem layers and optionally reproject all
-  results$ecosys_risk_raw        <- eco_raw
-  results$ecosys_risk_classified <- eco_cls
-  results$summary_stats          <- summary_stats
+  out <- results
+  out$ecosys_risk_raw        <- eco_raw
+  out$ecosys_risk_classified <- eco_cls
+  out$summary_stats          <- summary_stats
 
   if (isTRUE(output_decimal_crs)) {
-    # project species sub-results
     for (sp in species) {
-      for (nm in names(results[[sp]])) {
-        if (is.list(results[[sp]][[nm]])) {
-          for (k in c("E_criteria","C_criteria","Risk_map_raw","Risk_map")) {
-            results[[sp]][[nm]][[k]] <- convert_to_decimal_degrees(results[[sp]][[nm]][[k]])
-          }
-        } else if (nm %in% c("total_raw","total")) {
-          results[[sp]][[nm]] <- convert_to_decimal_degrees(results[[sp]][[nm]])
+      for (nm in names(out[[sp]])) if (is.list(out[[sp]][[nm]])) {
+        for (k in c("E_criteria","C_criteria","Risk_map_raw","Risk_map")) {
+          out[[sp]][[nm]][[k]] <- convert_to_decimal_degrees(out[[sp]][[nm]][[k]])
         }
+      } else if (nm %in% c("total_raw","total")) {
+        out[[sp]][[nm]] <- convert_to_decimal_degrees(out[[sp]][[nm]])
       }
     }
-    # project ecosystem layers
-    results$ecosys_risk_raw        <- convert_to_decimal_degrees(results$ecosys_risk_raw)
-    results$ecosys_risk_classified <- convert_to_decimal_degrees(results$ecosys_risk_classified)
+    out$ecosys_risk_raw        <- convert_to_decimal_degrees(out$ecosys_risk_raw)
+    out$ecosys_risk_classified <- convert_to_decimal_degrees(out$ecosys_risk_classified)
   }
 
-  class(results) <- c("risaHRA", class(results))
-  results
+  class(out) <- c("risaHRA", class(out))
+  out
 }
 
 
 ################################################################################
 ############################criteria_reshape####################################
 ################################################################################
-
 #' Reshape a criteria table into a list of data frames respective to each species
 #'
-#' Splits a wide Habitat Risk Assessment criteria table (first column with
-#' attribute/stressor labels, triplets of columns per species: RATING/DQ/WEIGHT,
-#' and a column with E/C type) into a list of long-format data frames—one per
-#' species—with columns: STRESSOR, ATTRIBUTES, RATING, DQ, WEIGHT, `E/C`.
+#' Splits a standard criteria table for Habitat Risk Assessment
+#' (a column with species and stressor attribute descriptors, columns with rating values for each species, and a criteria type column)
+#' into a list of data frames (one for each species).  It extracts and recycles stressor names,
+#' removes header/blank rows, adds a `STRESSOR` column.
 #'
-#' The function is robust to internal header rows and blank-row separators.
-#' It detects the criteria-type column as the rightmost column whose values
-#' are in {E, C} (case-insensitive), and groups the species triplets from the
-#' columns between the first and the criteria-type column.
-#'
-#' @param x A `data.frame`. Expected layout:
-#'   - Column 1: attribute/stressor labels (character), containing blank rows
-#'     that separate blocks.
-#'   - Columns 2..(2+3k-1): for each species, three columns (RATING, DQ, WEIGHT).
-#'   - One column (typically last) with `E`/`C` entries (criteria type).
-#'     This is auto-detected.
-#'   Internal header rows are allowed and will be dropped.
-#' @return A named `list` of `data.frame` objects, one per species, each with
-#'   columns `STRESSOR, ATTRIBUTES, RATING, DQ, WEIGHT, E/C`.
+#' @param x A `data.frame` with a column with stressor names,
+#' columns with species and stressor attributes (groups of three columns per species),
+#' a last column with CRITERIA TYPE` values (E or C). It is separated in row blocks for
+#' species attributes and stressor properties by "" or NAs.
+#' @return A named `list` of `data.frame` objects, one per species. Each element has:
+#' `STRESSOR`, which is a factor of stressor names, and the original attribute columns for that species.
 #' @examples
-#' # crit_list <- criteria_reshape(df)
-#' # str(crit_list$sp1)
+#' #test
+#' #Load example data
+#' path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
+#' df <- read.csv(path)
+#'
+#' #Inspect dataframe
+#' head(df)
+#'
+#' #Reshape criteria table
+#' crit_list <- criteria_reshape(df)
+#' crit_list
 #' @export
 criteria_reshape <- function(x) {
   if (!is.data.frame(x) || ncol(x) < 6L) {
-    stop("`x` must be a data.frame with at least 6 columns: 1 (ATTRIBUTES) + triplets per species + 1 (E/C).")
+    stop("`x` must be a data.frame with at least 6 columns.")
   }
 
-  # --- detect criteria-type column (E/C) ---------------------------------------
-  is_ec_col <- function(v) {
-    u <- unique(na.omit(trimws(toupper(as.character(v)))))
-    length(u) > 0L && all(u %in% c("E", "C"))
-  }
-  crit_col <- NULL
-  for (j in rev(seq_len(ncol(x)))) {
-    if (is_ec_col(x[[j]])) { crit_col <- j; break }
+  # ---- detect E/C column (by name or content) --------------------------------
+  norm_name <- function(s) tolower(gsub("[^a-z]", "", s))
+  name_hits <- which(norm_name(names(x)) %in% c("ec", "criteriatype"))
+  crit_col  <- if (length(name_hits)) name_hits[length(name_hits)] else NULL
+
+  if (is.null(crit_col)) {
+    is_ec_like <- function(v) {
+      tok <- toupper(trimws(as.character(v)))
+      tok <- tok[!(is.na(tok) | tok == "")]
+      if (!length(tok)) return(FALSE)
+      tok <- tok[!tok %in% c("E/C","EC","E C","CRITERIA TYPE")]
+      if (!length(tok)) return(TRUE)
+      mean(tok %in% c("E","C")) >= 0.80
+    }
+    cand <- which(vapply(x, is_ec_like, logical(1)))
+    if (length(cand)) crit_col <- cand[length(cand)]
   }
   if (is.null(crit_col)) stop("Could not find a column with only 'E'/'C' values (criteria type).")
 
-  # --- determine number of species triplets -----------------------------------
-  mid_cols <- (crit_col - 1L) - 1L   # columns strictly between col 1 and E/C col
+  # ---- species triplets live between column 1 and E/C column -----------------
+  mid_cols <- (crit_col - 1L) - 1L
   if (mid_cols < 3L) stop("Not enough species columns between the first column and the E/C column.")
-  if (mid_cols %% 3L != 0L) warning("Species columns between ATTRIBUTES and E/C are not a multiple of 3; extra columns will be ignored.")
   sp_n <- floor(mid_cols / 3L)
-  if (sp_n < 1L) stop("No complete species triplets (RATING/DQ/WEIGHT) were found.")
-
-  # Species names from the *first* column of each triplet; fall back to generic
   sp_firsts <- 2L + 3L * (0:(sp_n - 1L))
   sp_names  <- names(x)[sp_firsts]
   if (is.null(sp_names) || any(!nzchar(sp_names))) sp_names <- paste0("sp", seq_len(sp_n))
 
-  # --- parse block structure in column 1 to get STRESSOR membership -----------
+  # ---- build STRESSOR labels from blank-separated blocks in col 1 ------------
   lab <- as.character(x[[1L]])
   is_blank <- is.na(lab) | trimws(lab) == ""
   n <- nrow(x)
-
-  # Identify stressor "header" rows: first non-blank after a blank run
   blank_idx <- which(is_blank)
-  header_idx <- integer(0)
+
+  # Vectorized section-title detector
+  is_section_title <- function(s) {
+    s0 <- tolower(trimws(as.character(s)))
+    out <- grepl("resilience.*attribute", s0) |
+      grepl("stressor.*overlap.*propert", s0) |
+      grepl("^rating instruction", s0)
+    out[is.na(out)] <- FALSE
+    out
+  }
+
+  header_idx  <- integer(0)
   header_name <- character(0)
+
   for (b in blank_idx) {
     j <- b + 1L
+    # advance to first non-blank
     while (j <= n && (is.na(lab[j]) || trimws(lab[j]) == "")) j <- j + 1L
-    if (j <= n) {
-      header_idx  <- c(header_idx, j)
-      header_name <- c(header_name, lab[j])
+    if (j > n) next
+    # skip ONLY section titles; DO NOT skip E/C-labeled stressor header rows
+    while (j <= n && is_section_title(lab[j])) j <- j + 1L
+    if (j <= n && !is_blank[j]) {
+      header_idx  <- c(header_idx, j)        # this can be the row whose E/C cell is "E/C"
+      header_name <- c(header_name, lab[j])  # e.g., "stressor1"
     }
   }
-  # Build a row-wise STRESSOR assignment: rows after a header up to next blank
+
+  # Assign each row after a header to that stressor until next blank
   stressor_by_row <- rep(NA_character_, n)
   if (length(header_idx)) {
     for (k in seq_along(header_idx)) {
@@ -1675,39 +1748,39 @@ criteria_reshape <- function(x) {
       if (start <= end) stressor_by_row[start:end] <- header_name[k]
     }
   }
-  # We'll treat any rows before the first header as "species attributes" (STRESSOR = NA)
 
-  # Helper: does the first row look like an internal header row for columns?
-  looks_like_internal_header <- function(v) {
-    vv <- toupper(trimws(as.character(v)))
-    any(grepl("^ATTR|^RAT|^DQ$|^WEI|^E/C$|^CRITER", vv))
+  # ---- helpers to detect internal header lines -------------------------------
+  looks_like_internal_header <- function(row_vals) {
+    vv <- tolower(trimws(as.character(row_vals)))
+    any(grepl("^rating$|^dq$|^weight$|^e/?c$|^criteria", vv))
+  }
+  is_row_internal_header <- function(df_row) {
+    ec_val <- tolower(trimws(as.character(df_row[[length(df_row)]])))
+    has_eclabel <- ec_val %in% c("e/c","ec","e c","criteria type")
+    has_tokens  <- looks_like_internal_header(df_row)
+    has_eclabel || has_tokens
   }
 
-  # --- build per-species long tables ------------------------------------------
+  # ---- per-species reshape ---------------------------------------------------
   out <- vector("list", sp_n)
 
   for (i in seq_len(sp_n)) {
-    # ATTRIBUTES (col 1), this species' triplet, E/C column
     start <- 2L + 3L * (i - 1L)
     cols  <- c(1L, start:(start + 2L), crit_col)
     sub   <- x[, cols, drop = FALSE]
 
-    # If row 1 contains an internal header line, use it for names then drop it
+    names(sub) <- c("ATTRIBUTES","RATING","DQ","WEIGHT","E/C")
     r1 <- as.character(sub[1L, , drop = TRUE])
-    if (looks_like_internal_header(r1)) {
-      nm <- r1
-      nm[nchar(nm) == 0L] <- NA_character_
-      nm[is.na(nm)] <- c("ATTRIBUTES","RATING","DQ","WEIGHT","E/C")[seq_along(nm)]
-      names(sub) <- nm
-      data_rows <- 2L:nrow(sub)
-    } else {
-      names(sub) <- c("ATTRIBUTES","RATING","DQ","WEIGHT","E/C")
-      data_rows <- 1L:nrow(sub)
-    }
+    data_rows <- if (looks_like_internal_header(r1)) 2L:nrow(sub) else 1L:nrow(sub)
 
-    # Drop blank rows and stressor header rows from data
+    # Drop blank rows, section titles, and any internal header-like rows
     attrv <- as.character(sub$ATTRIBUTES)
-    drop_rows <- which(is.na(attrv) | trimws(attrv) == "" | attrv %in% header_name)
+    sec_title_rows <- is_section_title(attrv)
+    internal_header_rows <- vapply(seq_len(nrow(sub)), function(rr) {
+      is_row_internal_header(sub[rr, , drop = FALSE])
+    }, logical(1))
+
+    drop_rows <- which(is.na(attrv) | trimws(attrv) == "" | sec_title_rows | internal_header_rows)
     keep <- setdiff(data_rows, drop_rows)
 
     if (!length(keep)) {
@@ -1719,17 +1792,14 @@ criteria_reshape <- function(x) {
     }
 
     df <- sub[keep, , drop = FALSE]
-    # Attach STRESSOR label per original row index
     df$STRESSOR <- stressor_by_row[keep]
 
-    # Coerce numeric columns
     suppressWarnings({
       df$RATING <- as.integer(df$RATING)
       df$DQ     <- as.integer(df$DQ)
       df$WEIGHT <- as.integer(df$WEIGHT)
     })
 
-    # Reorder columns
     df <- df[, c("STRESSOR","ATTRIBUTES","RATING","DQ","WEIGHT","E/C")]
     rownames(df) <- NULL
     out[[i]] <- df
@@ -1761,8 +1831,21 @@ criteria_reshape <- function(x) {
 #' @importFrom sf st_write st_as_sf
 #' @importFrom utils zip
 #' @examples
-#' # risa_maps <- risa_prep(spp_df, str_df)
-#' # export_maps(risa_maps, "my_folder", vector_driver = "GPKG", zip_export = TRUE)
+#' # Creating test data
+#' spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
+#'                            lat = rnorm(80, 0, 10), species = "sp1"),
+#'                 data.frame(long = rnorm(60, 0, 10),
+#'                            lat = rnorm(60, 0, 10), species = "sp2"))
+#' str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
+#'                            lat = rnorm(100, 0, 10), stressor = "trawling"),
+#'                 data.frame(long = rnorm(50, 0, 10),
+#'                            lat = rnorm(100, 0, 5), stressor = "gillnet"))
+#'
+#' # Create kernel maps of species and stressor distributions and overlap maps
+#' risa_maps <- risa_prep(spp_df, str_df)
+#'
+#' # Export vector and raster objects as shapefiles and tiff to external folder
+#' export_maps(risa_maps, "my_folder")
 #' @export
 export_maps <- function(
     x,
@@ -1877,7 +1960,7 @@ export_maps <- function(
 
 
 ################################################################################
-###############################input_tools######################################
+############################read_maps_nested####################################
 ################################################################################
 
 #' Read spatial files into a nested list mirroring directory structure
@@ -1895,6 +1978,25 @@ export_maps <- function(
 #' @importFrom terra rast
 #' @importFrom sf st_read
 #' @importFrom tools file_ext file_path_sans_ext
+#' @examples
+#' \dontrun{
+#' # Suppose your files are organized like:
+#' # data/
+#' # ├─ regionA/
+#' # │  ├─ landcover.tif
+#' # │  └─ roads.shp
+#' # └─ regionB/
+#' #    └─ zone1/
+#' #       └─ elevation.tif
+#'
+#' maps <- read_maps_nested("data")
+#' # Access the landcover raster:
+#' maps$regionA$landcover
+#' # Access the roads sf object:
+#' maps$regionA$roads
+#' # Access the elevation raster:
+#' maps$regionB$zone1$elevation
+#' }
 #' @export
 read_maps_nested <- function(dir_path) {
   if (!is.character(dir_path) || length(dir_path) != 1L) {
@@ -1960,10 +2062,3 @@ read_maps_nested <- function(dir_path) {
 
   .read_dir(dir_path)
 }
-
-
-
-
-
-
-

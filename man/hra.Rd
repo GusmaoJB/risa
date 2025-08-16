@@ -102,3 +102,16 @@ many_test$summary_stats
 terra::plot(many_test$species1$total_raw)
 terra::plot(many_test$species2$total_raw)
 }
+\references{
+Arkema KK, Verutes G, Bernhardt JR, Clarke C, Rosado S, Canto M, et al. (2014)
+Assessing habitat risk from human activities to inform coastal and marine spatial
+planning: a demonstration in Belize. \emph{Environmental Research Letters} 9:114016.
+
+Sharp R, Tallis H, Ricketts T, Guerry A, Wood SA, Chaplin-Kramer R, et al. (2016)
+InVEST [Internet]. The Natural Capital Project, Stanford University, University of
+Minnesota, The Nature Conservancy, and World Wildlife Fund. Available at
+\url{http://www.naturalcapitalproject.org/software/}.
+
+Chung MG, Kang H, Choi S-U. (2015) Assessment of Coastal Ecosystem Services for
+Conservation Strategies in South Korea. \emph{PLOS ONE} 10:e0133856. PMID: 26221950.
+}

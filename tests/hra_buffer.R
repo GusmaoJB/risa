@@ -21,9 +21,6 @@
 #' InVEST [Internet]. The Natural Capital Project, Stanford University, University of
 #' Minnesota, The Nature Conservancy, and World Wildlife Fund. Available at
 #' \url{http://www.naturalcapitalproject.org/software/}.
-#'
-#' Chung MG, Kang H, Choi S-U. (2015) Assessment of Coastal Ecosystem Services for
-#' Conservation Strategies in South Korea. \emph{PLOS ONE} 10:e0133856. PMID: 26221950.
 #' @param raster_list list
 #' @param species_distr SpatRaster (single) OR named list of SpatRasters (ecosystem).
 #'        If an element is a list, the first SpatRaster within it will be used.
@@ -90,13 +87,16 @@
 #' terra::plot(many_test$species1$total_raw)
 #' terra::plot(many_test$species2$total_raw)
 #' @export
-hra <- function(
+hra2 <- function(
     raster_list, species_distr, criteria,
     equation = c("euclidean","multiplicative"),
+    decay = c("none", "linear", "exponential"),
+    buffer_m = NULL,
     r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE
 ) {
   depth <- list_depth_base(raster_list)
   equation <- match.arg(equation)
+  decay <- match.arg(decay)
 
   # Helpers
   .check_criteria <- function(df_or_list) {
@@ -205,6 +205,16 @@ hra <- function(
       stop("Names in 'raster_list' must be a subset of criteria STRESSOR values.")
     }
 
+    if (!is.null(buffer_m)) {
+      if (!length(buffer_m) == length(stressors)) {
+        stop("Input 'buffer_m' must be a vector of buffer distances (in meters) for each stressor")
+      }
+      if (all(!names(buffer_m) %in% stressors)) {
+        message("Input 'buffer_m' is not named after the stressors. Assuming that the value orders reflect stressor's order...")
+        names(buffer_m) <- stressors
+      }
+    }
+
     sp_presence    <- terra::ifel(!is.na(sp_distr), 1, NA)
     sp_distr_zeros <- terra::ifel(!is.na(sp_distr), 0, NA)
     zero_r         <- sp_distr * 0
@@ -226,24 +236,28 @@ hra <- function(
         stop("DQ/WEIGHT must be > 0 for stressor '", stressor, "'.")
       }
 
-      E_const  <- E_df[!is.na(E_df$RATING), , drop=FALSE]
-      C_const  <- C_df[!is.na(C_df$RATING), , drop=FALSE]
+      E_const <- E_df[!is.na(E_df$RATING), , drop=FALSE]
+      C_const <- C_df[!is.na(C_df$RATING), , drop=FALSE]
       E_mapped <- E_df[ is.na(E_df$RATING), , drop=FALSE]
       C_mapped <- C_df[ is.na(C_df$RATING), , drop=FALSE]
 
+      # Calculated spatially explicit E and C attributes
       sum_weighted <- function(df_map) {
         if (!nrow(df_map)) return(zero_r)
         parts <- vector("list", nrow(df_map))
         for (i in seq_len(nrow(df_map))) {
           att <- df_map$ATTRIBUTES[i]
+
           r   <- rlist[[stressor]][[att]]
           if (is.null(r) || !inherits(r,"SpatRaster")) {
             stop("Missing/invalid raster for '", stressor, "' / attribute '", att, "'.")
           }
           r <- .align_to(r, sp_distr, categorical = TRUE)
+
           parts[[i]] <- r / (df_map$DQ[i] * df_map$WEIGHT[i])
         }
-        Reduce(`+`, parts)
+        weighted_result <- Reduce(`+`, parts)
+        return(weighted_result)
       }
 
       E_numer_const <- if (nrow(E_const)) sum(E_const$RATING / (E_const$DQ * E_const$WEIGHT)) else 0
@@ -257,20 +271,46 @@ hra <- function(
       E_score_raster <- (E_numer_const + E_numer_rast) / E_denom
       C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
 
+      E_decay_start <- E_numer_const/E_denom
+      C_decay_start <- C_numer_const/C_denom
+
       E_map <- terra::mosaic(E_score_raster, sp_distr_zeros, fun="first")
       C_map <- terra::mosaic(terra::mask(C_score_raster, sp_distr), sp_distr_zeros, fun="first")
 
-      risk_raw <- if (equation=="multiplicative") {
-        (C_score_raster * E_score_raster) * sp_presence
-      } else {
-        sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
+      if (decay %in% c("linear", "exponential") & !is.null(buffer_m)) {
+        E_decay_coeffs <- get_decay(sp_distr, E_map, buffer_m[stressor], decay)
+        C_decay_coeffs <- get_decay(sp_distr, C_map, buffer_m[stressor], decay)
+
+        E_map <- risk_weight_djkl(E_decay_coeffs, E_map, E_decay_start)
+        C_map <- risk_weight_djkl(C_decay_coeffs, C_map, C_decay_start)
       }
-      risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
+
+      #risk_raw <- if (equation=="multiplicative") {
+      #  (C_score_raster * E_score_raster) * sp_presence
+      #} else {
+      #  sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
+      #}
+      #risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
+      #risk_cls <- terra::ifel(
+      #  risk_raw == 0, 0,
+      #  terra::ifel(risk_raw < (1/3)*m_jkl, 1,
+      #              terra::ifel(risk_raw < (2/3)*m_jkl, 2, 3))
+      #)
+
+      terra::plot(E_decay_coeffs)
+
+      risk_raw <- if (equation=="multiplicative") {
+        (C_map * E_map) * E_decay_coeffs
+      } else {
+        sqrt((E_map - 1)^2 + (C_map - 1)^2) * E_decay_coeffs
+      }
+      #risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
       risk_cls <- terra::ifel(
         risk_raw == 0, 0,
         terra::ifel(risk_raw < (1/3)*m_jkl, 1,
                     terra::ifel(risk_raw < (2/3)*m_jkl, 2, 3))
       )
+
 
       res[[stressor]] <- list(
         E_criteria   = E_map,

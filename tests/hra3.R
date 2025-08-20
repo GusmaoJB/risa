@@ -21,6 +21,9 @@
 #' InVEST [Internet]. The Natural Capital Project, Stanford University, University of
 #' Minnesota, The Nature Conservancy, and World Wildlife Fund. Available at
 #' \url{http://www.naturalcapitalproject.org/software/}.
+#'
+#' Chung MG, Kang H, Choi S-U. (2015) Assessment of Coastal Ecosystem Services for
+#' Conservation Strategies in South Korea. \emph{PLOS ONE} 10:e0133856. PMID: 26221950.
 #' @param raster_list list
 #' @param species_distr SpatRaster (single) OR named list of SpatRasters (ecosystem).
 #'        If an element is a list, the first SpatRaster within it will be used.
@@ -87,14 +90,14 @@
 #' terra::plot(many_test$species1$total_raw)
 #' terra::plot(many_test$species2$total_raw)
 #' @export
-hra2 <- function(
+hra3 <- function(
     raster_list, species_distr, criteria,
     equation = c("euclidean","multiplicative"),
+    r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE,
     decay = c("none", "linear", "exponential", "polynomial_2nd",
               "polynomial_3rd", "polynomial_4th"),
-    buffer_m = NULL,
-    r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE
-) {
+    buffer_m = NULL) {
+
   depth <- list_depth_base(raster_list)
   equation <- match.arg(equation)
   decay <- match.arg(decay)
@@ -185,7 +188,7 @@ hra2 <- function(
     rbind(overall, per)
   }
 
-  .single <- function(rlist, sp_distr, crit, equation, r_max, n_overlap, output_decimal_crs) {
+  .single <- function(rlist, sp_distr, crit, equation, r_max, n_overlap, output_decimal_crs, buffers = NULL) {
     if (list_depth_base(rlist) != 2L) stop("Single-species mode requires depth-2 raster_list.")
 
     # Accept list containers for sp_distr
@@ -193,9 +196,9 @@ hra2 <- function(
     if (!inherits(sp_distr, "SpatRaster")) stop("'species_distr' must be or contain a SpatRaster.")
 
     crit <- .check_criteria(crit)
+
     stressors <- unique(crit$STRESSOR)
     stressors <- stressors[!(is.na(stressors) | stressors %in% c("", "NA"))]
-
     if (length(stressors) == 0L) stop("No stressors found in criteria (STRESSOR column).")
     if (is.null(n_overlap)) n_overlap <- length(stressors)
 
@@ -204,16 +207,6 @@ hra2 <- function(
     }
     if (!all(names(rlist) %in% stressors)) {
       stop("Names in 'raster_list' must be a subset of criteria STRESSOR values.")
-    }
-
-    if (!is.null(buffer_m)) {
-      if (!length(buffer_m) == length(stressors)) {
-        stop("Input 'buffer_m' must be a vector of buffer distances (in meters) for each stressor")
-      }
-      if (all(!names(buffer_m) %in% stressors)) {
-        message("Input 'buffer_m' is not named after the stressors. Assuming that the value orders reflect stressor's order...")
-        names(buffer_m) <- stressors
-      }
     }
 
     sp_presence    <- terra::ifel(!is.na(sp_distr), 1, NA)
@@ -237,57 +230,27 @@ hra2 <- function(
         stop("DQ/WEIGHT must be > 0 for stressor '", stressor, "'.")
       }
 
-      E_const <- E_df[!is.na(E_df$RATING), , drop=FALSE]
-      C_const <- C_df[!is.na(C_df$RATING), , drop=FALSE]
+      E_const  <- E_df[!is.na(E_df$RATING), , drop=FALSE]
+      C_const  <- C_df[!is.na(C_df$RATING), , drop=FALSE]
       E_mapped <- E_df[ is.na(E_df$RATING), , drop=FALSE]
       C_mapped <- C_df[ is.na(C_df$RATING), , drop=FALSE]
 
-      print(E_mapped)
-      print(C_mapped)
-
-      # Calculated spatially explicit E and C attributes
       sum_weighted <- function(df_map) {
-        if (!nrow(df_map)) return(list(weighted_result = zero_r,
-                                       E_decay_coef = list(),
-                                       C_decay_coef = list()))
-
+        if (!nrow(df_map)) return(zero_r)
         parts <- vector("list", nrow(df_map))
-        E_coefs <- list()
-        C_coefs <- list()
-
-        ec_col <- df_map[["E/C"]]   # safer than df_map$`E/C`
-
         for (i in seq_len(nrow(df_map))) {
           att <- df_map$ATTRIBUTES[i]
           r   <- rlist[[stressor]][[att]]
-          if (is.null(r) || !inherits(r, "SpatRaster")) {
+          if (!is.null(buffers)) {
+            r <- buffers[["decay_rasters"]][[stressor]][[att]]
+          }
+          if (is.null(r) || !inherits(r,"SpatRaster")) {
             stop("Missing/invalid raster for '", stressor, "' / attribute '", att, "'.")
           }
-
-          if (decay %in% c("linear","exponential","polynomial_2nd","polynomial_3rd","polynomial_4th") &&
-              !is.na(buffer_m[stressor])) {  # check NA, not just NULL
-
-            decay_coef <- decay_coeffs(r, decay, buffer_m[stressor])
-
-            if (identical(ec_col[i], "E")) {
-              E_coefs[[att]] <- decay_coef
-            } else if (identical(ec_col[i], "C")) {
-              C_coefs[[att]] <- decay_coef
-            }
-
-            start_val <- as.numeric(terra::global(r, "min", na.rm = TRUE)[[1]])
-            r <- get_decay_map(r, decay_coef, start_val)
-            r <- .align_to(r, sp_distr, categorical = TRUE)
-          }
-
+          r <- .align_to(r, sp_distr, categorical = TRUE)
           parts[[i]] <- r / (df_map$DQ[i] * df_map$WEIGHT[i])
         }
-
-        list(
-          weighted_result = Reduce(`+`, parts),
-          E_decay_coef = E_coefs,
-          C_decay_coef = C_coefs
-        )
+        Reduce(`+`, parts)
       }
 
       E_numer_const <- if (nrow(E_const)) sum(E_const$RATING / (E_const$DQ * E_const$WEIGHT)) else 0
@@ -295,62 +258,34 @@ hra2 <- function(
       E_numer_rast  <- sum_weighted(E_mapped)
       C_numer_rast  <- sum_weighted(C_mapped)
 
-      terra::plot(E_numer_rast$weighted_result)
-      terra::plot(E_numer_rast$E_coefs)
-      terra::plot(E_numer_rast$C_coefs)
-      terra::plot(C_numer_rast$weighted_result)
-      terra::plot(C_numer_rast$E_coefs)
-      terra::plot(C_numer_rast$C_coefs)
+      E_numer_rast <- terra::mask(E_numer_rast, sp_presence)
+      C_numer_rast <- terra::mask(C_numer_rast, sp_presence)
 
       E_denom <- sum(1 / (E_df$DQ * E_df$WEIGHT))
       C_denom <- sum(1 / (C_df$DQ * C_df$WEIGHT))
 
-      E_score_raster <- (E_numer_const + E_numer_rast$weighted_result) / E_denom
-      C_score_raster <- (C_numer_const + C_numer_rast$weighted_result) / C_denom
+      E_score_raster <- (E_numer_const + E_numer_rast) / E_denom
+      C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
 
-      E_score_raster <- E_score_raster * E_numer_rast$E_decay_coef
-      C_score_raster <- C_score_raster * C_numer_rast$C_decay_coef
-
-      # E_decay_start <- E_numer_const/E_denom
-      # C_decay_start <- C_numer_const/C_denom
+      E_score_raster <- E_score_raster *
 
       E_map <- terra::mosaic(E_score_raster, sp_distr_zeros, fun="first")
-      C_map <- terra::mosaic(terra::mask(C_score_raster, sp_distr), sp_distr_zeros, fun="first")
+      C_map <- terra::mosaic(C_score_raster, sp_distr_zeros, fun="first")
 
-      #if (!is.null(decay) & !is.null(buffer_m)) {
-      #  E_decay_coeffs <- get_decay(sp_distr, E_map, buffer_m[stressor], decay)
-      #  C_decay_coeffs <- get_decay(sp_distr, C_map, buffer_m[stressor], decay)
-
-      #  print(paste("For", stressor, "the buffer is:", buffer_m[stressor]))
-
-      #  E_map <- risk_weight_djkl(E_decay_coeffs, E_map, E_decay_start) * E_decay_coeffs
-      #  C_map <- risk_weight_djkl(C_decay_coeffs, C_map, C_decay_start) * C_decay_coeffs
-      #}
-
-      #risk_raw <- if (equation=="multiplicative") {
-      #  (C_score_raster * E_score_raster) * sp_presence
-      #} else {
-      #  sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
-      #}
-      #risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
-      #risk_cls <- terra::ifel(
-      #  risk_raw == 0, 0,
-      #  terra::ifel(risk_raw < (1/3)*m_jkl, 1,
-      #              terra::ifel(risk_raw < (2/3)*m_jkl, 2, 3))
-      #)
+      terra::plot(E_map)
+      terra::plot(C_map)
 
       risk_raw <- if (equation=="multiplicative") {
-        (C_map * E_map) #* E_decay_coeffs
+        (C_score_raster * E_score_raster) * sp_presence
       } else {
-        sqrt((E_map - 1)^2 + (C_map - 1)^2)
+        sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
       }
-      #risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
+      risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
       risk_cls <- terra::ifel(
         risk_raw == 0, 0,
         terra::ifel(risk_raw < (1/3)*m_jkl, 1,
                     terra::ifel(risk_raw < (2/3)*m_jkl, 2, 3))
       )
-
 
       res[[stressor]] <- list(
         E_criteria   = E_map,
@@ -385,6 +320,59 @@ hra2 <- function(
     res
   }
 
+  .decay_coeffs_and_buffers <- function(input_list, decay, buffer_m, depth = 2L) {
+    if (!decay %in% c("none", "linear","exponential",
+                      "polynomial_2nd","polynomial_3rd","polynomial_4th"))
+      stop("Unsupported decay type")
+
+    .single_decay <- function(rlist) {
+      decay_coefficients <- list()
+      decay_rasters <- list()
+
+      for (stressor in names(rlist)) {
+        decay_coefficients[[stressor]] <- list()
+        decay_rasters[[stressor]] <- list()
+
+        for (attribute in names(rlist[[stressor]])) {
+          r <- rlist[[stressor]][[attribute]]
+          if (!inherits(r, "SpatRaster"))
+            stop(sprintf("Expected SpatRaster at %s -> %s", stressor, attribute))
+
+          # pass only the buffer for this stressor (or a default if missing)
+          buf <- if (!is.null(buffer_m[[stressor]])) buffer_m[[stressor]] else NA_real_
+
+          decay_coefficients[[stressor]][[attribute]] <- decay_coeffs(r, decay, buf)
+
+          start_val <- as.numeric(terra::global(r, "min", na.rm = TRUE)[[1]])
+          decay_rasters[[stressor]][[attribute]] <- get_decay_map(
+            r, decay_coefficients[[stressor]][[attribute]], start_val
+          )
+        }
+      }
+
+      list(decay_coefficients = decay_coefficients,
+           decay_rasters = decay_rasters)
+    }
+
+    if (depth == 2L) {
+      return(.single_decay(input_list))
+    } else if (depth == 3L) {
+      spp_results <- lapply(input_list, .single_decay)
+      return(spp_results)
+    } else {
+      stop("depth must be 2L or 3L")
+    }
+  }
+
+  # Check if buffers are considerd
+  decay_buffers <- list()
+  if (decay %in% c("linear","exponential","polynomial_2nd","polynomial_3rd","polynomial_4th") &&
+      !is.null(buffer_m[stressor])) {
+    decay_buffers <- .decay_coeffs_and_buffers(raster_list, decay, buffer_m, depth)
+  } else {
+    decay_buffers <- NULL
+  }
+
   # Dispatch
   if (depth == 2L) {
     return(.single(
@@ -394,7 +382,8 @@ hra2 <- function(
       equation = equation,
       r_max = r_max,
       n_overlap = n_overlap,
-      output_decimal_crs = output_decimal_crs
+      output_decimal_crs = output_decimal_crs,
+      buffers = decay_buffers
     ))
   }
 
@@ -427,7 +416,7 @@ hra2 <- function(
   # Run single HRA per species
   results <- lapply(species, function(sp) {
     .single(raster_list[[sp]], sd[[sp]], criteria[[sp]],
-            equation, r_max, n_overlap, FALSE)
+            equation, r_max, n_overlap, FALSE, buffers = decay_buffers[[sp]])
   })
   names(results) <- species
 

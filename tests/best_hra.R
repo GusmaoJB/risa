@@ -1,100 +1,12 @@
-#' Habitat Risk Assessment (HRA)
-#'
-#' Implements the Natural Capital Project’s InVEST Habitat Risk Assessment (HRA;
-#' Sharp et al., 2016) model to estimate spatial risk from multiple stressors to
-#' a species/habitat (single-species mode) or across multiple species (ecosystem
-#' mode). The model estimates are based on Arkema et al. (2014), in which, for
-#' each stressor, the function combines Exposure (E) and Consequence (C) criteria—
-#' mixing mapped rasters and constant scores—using either the Euclidean or
-#' Multiplicative InVEST risk equations. Inputs can be nested lists of rasters
-#' (stressor → attributes; or species → stressor → attributes) plus a species
-#' distribution raster (or list) and a criteria table (or list). Rasters are
-#' auto-aligned to the species grid; outputs include per-stressor E/C maps,
-#' raw and classed risk maps, ecosystem risk (when applicable), and a
-#' `summary_stats` data frame. Optional reprojection to EPSG:4326 is supported.
-#' @references
-#' Arkema KK, Verutes G, Bernhardt JR, Clarke C, Rosado S, Canto M, et al. (2014)
-#' Assessing habitat risk from human activities to inform coastal and marine spatial
-#' planning: a demonstration in Belize. \emph{Environmental Research Letters} 9:114016.
-#'
-#' Sharp R, Tallis H, Ricketts T, Guerry A, Wood SA, Chaplin-Kramer R, et al. (2016)
-#' InVEST [Internet]. The Natural Capital Project, Stanford University, University of
-#' Minnesota, The Nature Conservancy, and World Wildlife Fund. Available at
-#' \url{http://www.naturalcapitalproject.org/software/}.
-#' @param raster_list list
-#' @param species_distr SpatRaster (single) OR named list of SpatRasters (ecosystem).
-#'        If an element is a list, the first SpatRaster within it will be used.
-#' @param criteria data.frame (single) OR named list of data.frames (ecosystem).
-#' @param equation c("euclidean","multiplicative")
-#' @param r_max integer in 1..10
-#' @param n_overlap optional number of stressors (default inferred)
-#' @param output_decimal_crs logical; reproject outputs to EPSG:4326 if TRUE
-#' @return "risaHRA" list with per-stressor maps, totals, and summary_stats
-#' @importFrom terra compareGeom project mosaic mask ifel freq global
-#' @examples
-#' # example code
-#'
-#' # Creating test data
-#' set.seed(12)
-#' spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
-#' lat = rnorm(80, 0, 10), species = "species1"),
-#' data.frame(long = rnorm(60, 0, 10),
-#' lat = rnorm(60, 0, 10), species = "species2"))
-#' str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
-#' lat = rnorm(100, 0, 10), stressor = "stressor1"),
-#' data.frame(long = rnorm(50, 0, 10),
-#' lat = rnorm(100, 0, 5), stressor = "stressor2"))
-#' # Create kernel maps of species and stressor distributions and overlap maps
-#' risa_maps <- risa_prep(spp_df, str_df)
-#' #Load example data
-#' path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
-#' df <- read.csv(path)
-#' #Reshape criteria table
-#' crit_list <- criteria_reshape(df)
-#' # Selecting spatially explicit criteria ratings
-#' # Note that the rasters in the stressors's list are named after the respective attribute in the criteria table.
-#' rast_list <- list(
-#' species1 = list(
-#' stressor1 = list(
-#' intensity = risa_maps$stressor_kernel_maps$stressor1$raster,
-#' `likelihood of interaction`=risa_maps$overlap_maps$species1$stressor1$raster),
-#' stressor2 = list(
-#' intensity = risa_maps$stressor_kernel_maps$stressor2$raster,
-#' `likelihood of interaction`=risa_maps$overlap_maps$species1$stressor2$raster)
-#' ),
-#' species2 = list(
-#' stressor1 = list(
-#' intensity = risa_maps$stressor_kernel_maps$stressor1$raster,
-#' `likelihood of interaction`=risa_maps$overlap_maps$species2$stressor1$raster),
-#' stressor2 = list(
-#' intensity = risa_maps$stressor_kernel_maps$stressor2$raster,
-#' `likelihood of interaction`=risa_maps$overlap_maps$species2$stressor2$raster)
-#' )
-#' )
-#'
-#' # Species' distributions rasters
-#' spp_dist <- list(species1 = risa_maps$species_distributions$species1$raster,
-#' species2 = risa_maps$species_distributions$species2$raster)
-#'
-#' # Simple example with one species and one stressor
-#' test1 <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]], equation = "euclidean")
-#' terra::plot(test1$total_raw)
-#' test1$summary_stats
-#'
-#' # Now with two species and two stressors
-#' many_test <- hra(rast_list, spp_dist, crit_list, equation = "euclidean")
-#' many_test$summary_stats
-#' terra::plot(many_test$species1$total_raw)
-#' terra::plot(many_test$species2$total_raw)
-#' @export
-hra2 <- function(
+hra4 <- function(
     raster_list, species_distr, criteria,
     equation = c("euclidean","multiplicative"),
-    decay = c("none", "linear", "exponential", "polynomial_2nd",
-              "polynomial_3rd", "polynomial_4th"),
-    buffer_m = NULL,
-    r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE
-) {
+    r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE,
+    decay = c("none", "linear", "exponential",
+              "polynomial_2nd", "polynomial_3rd",
+              "complementary_decay_2nd", "complementary_decay_3rd"),
+    buffer_m = NULL) {
+
   depth <- list_depth_base(raster_list)
   equation <- match.arg(equation)
   decay <- match.arg(decay)
@@ -185,7 +97,9 @@ hra2 <- function(
     rbind(overall, per)
   }
 
-  .single <- function(rlist, sp_distr, crit, equation, r_max, n_overlap, output_decimal_crs) {
+  .single <- function(rlist, sp_distr, crit, equation,
+                      r_max, n_overlap, output_decimal_crs,
+                      decay, buffer_m) {
     if (list_depth_base(rlist) != 2L) stop("Single-species mode requires depth-2 raster_list.")
 
     # Accept list containers for sp_distr
@@ -193,9 +107,9 @@ hra2 <- function(
     if (!inherits(sp_distr, "SpatRaster")) stop("'species_distr' must be or contain a SpatRaster.")
 
     crit <- .check_criteria(crit)
+
     stressors <- unique(crit$STRESSOR)
     stressors <- stressors[!(is.na(stressors) | stressors %in% c("", "NA"))]
-
     if (length(stressors) == 0L) stop("No stressors found in criteria (STRESSOR column).")
     if (is.null(n_overlap)) n_overlap <- length(stressors)
 
@@ -204,16 +118,6 @@ hra2 <- function(
     }
     if (!all(names(rlist) %in% stressors)) {
       stop("Names in 'raster_list' must be a subset of criteria STRESSOR values.")
-    }
-
-    if (!is.null(buffer_m)) {
-      if (!length(buffer_m) == length(stressors)) {
-        stop("Input 'buffer_m' must be a vector of buffer distances (in meters) for each stressor")
-      }
-      if (all(!names(buffer_m) %in% stressors)) {
-        message("Input 'buffer_m' is not named after the stressors. Assuming that the value orders reflect stressor's order...")
-        names(buffer_m) <- stressors
-      }
     }
 
     sp_presence    <- terra::ifel(!is.na(sp_distr), 1, NA)
@@ -237,57 +141,24 @@ hra2 <- function(
         stop("DQ/WEIGHT must be > 0 for stressor '", stressor, "'.")
       }
 
-      E_const <- E_df[!is.na(E_df$RATING), , drop=FALSE]
-      C_const <- C_df[!is.na(C_df$RATING), , drop=FALSE]
+      E_const  <- E_df[!is.na(E_df$RATING), , drop=FALSE]
+      C_const  <- C_df[!is.na(C_df$RATING), , drop=FALSE]
       E_mapped <- E_df[ is.na(E_df$RATING), , drop=FALSE]
       C_mapped <- C_df[ is.na(C_df$RATING), , drop=FALSE]
 
-      print(E_mapped)
-      print(C_mapped)
-
-      # Calculated spatially explicit E and C attributes
       sum_weighted <- function(df_map) {
-        if (!nrow(df_map)) return(list(weighted_result = zero_r,
-                                       E_decay_coef = list(),
-                                       C_decay_coef = list()))
-
+        if (!nrow(df_map)) return(zero_r)
         parts <- vector("list", nrow(df_map))
-        E_coefs <- list()
-        C_coefs <- list()
-
-        ec_col <- df_map[["E/C"]]   # safer than df_map$`E/C`
-
         for (i in seq_len(nrow(df_map))) {
           att <- df_map$ATTRIBUTES[i]
           r   <- rlist[[stressor]][[att]]
-          if (is.null(r) || !inherits(r, "SpatRaster")) {
+          if (is.null(r) || !inherits(r,"SpatRaster")) {
             stop("Missing/invalid raster for '", stressor, "' / attribute '", att, "'.")
           }
-
-          if (decay %in% c("linear","exponential","polynomial_2nd","polynomial_3rd","polynomial_4th") &&
-              !is.na(buffer_m[stressor])) {  # check NA, not just NULL
-
-            decay_coef <- decay_coeffs(r, decay, buffer_m[stressor])
-
-            if (identical(ec_col[i], "E")) {
-              E_coefs[[att]] <- decay_coef
-            } else if (identical(ec_col[i], "C")) {
-              C_coefs[[att]] <- decay_coef
-            }
-
-            start_val <- as.numeric(terra::global(r, "min", na.rm = TRUE)[[1]])
-            r <- get_decay_map(r, decay_coef, start_val)
-            r <- .align_to(r, sp_distr, categorical = TRUE)
-          }
-
+          r <- .align_to(r, sp_distr, categorical = TRUE)
           parts[[i]] <- r / (df_map$DQ[i] * df_map$WEIGHT[i])
         }
-
-        list(
-          weighted_result = Reduce(`+`, parts),
-          E_decay_coef = E_coefs,
-          C_decay_coef = C_coefs
-        )
+        Reduce(`+`, parts)
       }
 
       E_numer_const <- if (nrow(E_const)) sum(E_const$RATING / (E_const$DQ * E_const$WEIGHT)) else 0
@@ -295,62 +166,59 @@ hra2 <- function(
       E_numer_rast  <- sum_weighted(E_mapped)
       C_numer_rast  <- sum_weighted(C_mapped)
 
-      terra::plot(E_numer_rast$weighted_result)
-      terra::plot(E_numer_rast$E_coefs)
-      terra::plot(E_numer_rast$C_coefs)
-      terra::plot(C_numer_rast$weighted_result)
-      terra::plot(C_numer_rast$E_coefs)
-      terra::plot(C_numer_rast$C_coefs)
-
       E_denom <- sum(1 / (E_df$DQ * E_df$WEIGHT))
       C_denom <- sum(1 / (C_df$DQ * C_df$WEIGHT))
 
-      E_score_raster <- (E_numer_const + E_numer_rast$weighted_result) / E_denom
-      C_score_raster <- (C_numer_const + C_numer_rast$weighted_result) / C_denom
+      E_score_raster <- (E_numer_const + E_numer_rast) / E_denom
+      C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
 
-      E_score_raster <- E_score_raster * E_numer_rast$E_decay_coef
-      C_score_raster <- C_score_raster * C_numer_rast$C_decay_coef
+      E_dec_coef <- 1
+      C_dec_coef <- 1
+      general_decay <- 1
 
-      # E_decay_start <- E_numer_const/E_denom
-      # C_decay_start <- C_numer_const/C_denom
+      if (decay %in% c("linear","exponential","polynomial_2nd","polynomial_3rd",
+                       "complementary_decay_2nd", "complementary_decay_3rd") &&
+          !is.null(buffer_m[stressor])) {
+        E_dec_coef <- decay_coeffs(E_score_raster, NULL, decay, buffer_m[stressor])
+        C_dec_coef <- decay_coeffs(C_score_raster, NULL, decay, buffer_m[stressor])
 
-      E_map <- terra::mosaic(E_score_raster, sp_distr_zeros, fun="first")
-      C_map <- terra::mosaic(terra::mask(C_score_raster, sp_distr), sp_distr_zeros, fun="first")
+        E_score_raster <- get_decay_map(E_score_raster, E_dec_coef, (E_numer_const / E_denom))
+        C_score_raster <- get_decay_map(C_score_raster, C_dec_coef, (C_numer_const / C_denom))
 
-      #if (!is.null(decay) & !is.null(buffer_m)) {
-      #  E_decay_coeffs <- get_decay(sp_distr, E_map, buffer_m[stressor], decay)
-      #  C_decay_coeffs <- get_decay(sp_distr, C_map, buffer_m[stressor], decay)
+        collection <- terra::sprc(rlist[[stressor]])
+        r_mos <- terra::mosaic(collection, fun=max)
+        stress_occ <- terra::ifel(is.na(r_mos), NA, 1)
+        general_decay <- decay_coeffs(stress_occ,
+                                      sp_presence,
+                                      decay = "complementary_decay_2nd",
+                                      buffer_m[[stressor]])
+      }
 
-      #  print(paste("For", stressor, "the buffer is:", buffer_m[stressor]))
+      E_score_raster <- terra::mask(E_score_raster, sp_presence)
+      C_score_raster <- terra::mask(C_score_raster, sp_presence)
 
-      #  E_map <- risk_weight_djkl(E_decay_coeffs, E_map, E_decay_start) * E_decay_coeffs
-      #  C_map <- risk_weight_djkl(C_decay_coeffs, C_map, C_decay_start) * C_decay_coeffs
-      #}
-
-      #risk_raw <- if (equation=="multiplicative") {
-      #  (C_score_raster * E_score_raster) * sp_presence
-      #} else {
-      #  sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
-      #}
-      #risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
-      #risk_cls <- terra::ifel(
-      #  risk_raw == 0, 0,
-      #  terra::ifel(risk_raw < (1/3)*m_jkl, 1,
-      #              terra::ifel(risk_raw < (2/3)*m_jkl, 2, 3))
-      #)
+      E_map <- terra::cover(E_score_raster, sp_distr_zeros)
+      C_map <- terra::cover(C_score_raster, sp_distr_zeros)
 
       risk_raw <- if (equation=="multiplicative") {
-        (C_map * E_map) #* E_decay_coeffs
+        (C_score_raster) * (E_score_raster) * general_decay
       } else {
-        sqrt((E_map - 1)^2 + (C_map - 1)^2)
+        E_opp <- E_score_raster - 1
+        C_opp <- C_score_raster - 1
+
+        if (inherits(general_decay, 'SpatRaster')) {
+          E_opp <- terra::ifel(E_opp < 0, 0, E_opp)
+          C_opp <- terra::ifel(C_opp < 0, 0, C_opp)
+        }
+
+        sqrt(E_opp^2 + C_opp^2) * general_decay
       }
-      #risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
+      risk_raw <- terra::cover(risk_raw, sp_distr_zeros)
       risk_cls <- terra::ifel(
         risk_raw == 0, 0,
         terra::ifel(risk_raw < (1/3)*m_jkl, 1,
                     terra::ifel(risk_raw < (2/3)*m_jkl, 2, 3))
       )
-
 
       res[[stressor]] <- list(
         E_criteria   = E_map,
@@ -360,6 +228,7 @@ hra2 <- function(
       )
     }
 
+    print(m_jkl*n_overlap)
     total_raw <- Reduce(`+`, lapply(res, function(x) x$Risk_map_raw))
     total_cls <- terra::ifel(
       total_raw == 0, 0,
@@ -394,7 +263,9 @@ hra2 <- function(
       equation = equation,
       r_max = r_max,
       n_overlap = n_overlap,
-      output_decimal_crs = output_decimal_crs
+      output_decimal_crs = output_decimal_crs,
+      decay,
+      buffer_m
     ))
   }
 
@@ -427,7 +298,8 @@ hra2 <- function(
   # Run single HRA per species
   results <- lapply(species, function(sp) {
     .single(raster_list[[sp]], sd[[sp]], criteria[[sp]],
-            equation, r_max, n_overlap, FALSE)
+            equation, r_max, n_overlap, FALSE,
+            decay, buffer_m)
   })
   names(results) <- species
 
@@ -437,21 +309,38 @@ hra2 <- function(
   eco_mask  <- terra::ifel(sum_pres > 0, 1, NA)
 
   # Ecosystem risk: average of species' total_raw, aligned to template
+  # 1) Align, keep NAs
   m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
-  eco_raw <- template * 0
-  for (sp in species) {
+  rlist <- lapply(species, function(sp) {
     r <- results[[sp]]$total_raw
-    r <- .align_to(r, template, categorical = FALSE) # continuous
-    r <- terra::ifel(is.na(r), 0, r)
-    eco_raw <- eco_raw + r
-  }
+    .align_to(r, template, categorical = FALSE)
+  })
+
+  # 2) Make a multilayer SpatRaster
+  stk <- terra::rast(rlist)
+
+  # 3) Sum across layers, ignoring NAs (ecosystem risk sum)
+  eco_raw <- terra::app(stk, sum, na.rm = TRUE)
+
+  # Ecosystem risk: average of species' total_raw, aligned to template
+  # m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
+  #eco_raw <- template * 0
+#  for (sp in species) {
+#    r <- results[[sp]]$total_raw
+#    r <- .align_to(r, template, categorical = FALSE) # continuous
+#    r <- terra::ifel(is.na(r), 0, r)
+#    eco_raw <- eco_raw + r
+#  }
+
   eco_raw <- eco_raw / length(species)
-  eco_raw <- terra::mosaic(eco_raw, terra::ifel(!is.na(eco_mask), 0, NA), fun="first")
+  eco_raw <- terra::cover(eco_raw, terra::ifel(!is.na(eco_mask), 0, NA))
   eco_cls <- terra::ifel(
     eco_raw == 0, 0,
     terra::ifel(eco_raw < (1/3)*m_jkl*n_overlap, 1,
                 terra::ifel(eco_raw < (2/3)*m_jkl*n_overlap, 2, 3))
   )
+
+
 
   # Summary table
   per_species_stats <- do.call(rbind, lapply(names(results), function(sp) {

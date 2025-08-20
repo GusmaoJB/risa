@@ -37,52 +37,61 @@ rast_list <- list(
    )
  )
 
- # Species' distributions rasters
- spp_dist <- list(species1 = risa_maps$species_distributions$species1$raster,
-                  species2 = risa_maps$species_distributions$species2$raster)
+# Species' distributions rasters
+spp_dist <- list(species1 = risa_maps$species_distributions$species1$raster,
+                 species2 = risa_maps$species_distributions$species2$raster)
 
- # single value for all stressors, linear decay within 10 km
- res <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]],
-            equation = "euclidean")
+# single value for all stressors, linear decay within 10 km
+res <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]],
+          equation = "euclidean")
 
- terra::plot(res$total_raw)
- terra::plot(res$stressor1$Risk_map_raw)
- res$summary_stats
-
- # per-stressor buffers (named)
-res3 <- hra2(rast_list, spp_dist, crit_list,
+# per-stressor buffers (named)
+res3 <- hra4(rast_list, spp_dist, crit_list,
              equation = "euclidean",
              decay = "linear",
-             buffer_m = c(stressor1 = 5000000, stressor2 = 1000000))
+             r_max = 3, n_overlap = 2,
+             buffer_m = c(stressor1 = 500000, stressor2 = 1000000))
 
-terra::plot(res3$species1$stressor1$E_criteria)
-terra::plot(res3$species1$stressor1$C_criteria)
-terra::plot(res3$species1$stressor1$Risk_map_raw)
+C_map <- res3$species1$stressor1$C_criteria
+E_map <- res3$species1$stressor1$E_criteria
 
-buffer_test <- list(E_crit <- res3$species1$stressor1$E_criteria,
-                    C_crit <- res3$species1$stressor1$C_criteria,
-                    risk_raw <- res3$species1$total_raw)
+res3$summary_stats
 
-export_maps(buffer_test, "C:/Users/gusma/Documents/research/test_hra/buffer_test")
+terra::plot(sqrt((E_map)^2 + (C_map)^2) * test)
+
+terra::plot(res3$species1$stressor1$Risk_map)
+terra::plot(res3$species1$stressor2$Risk_map)
+terra::plot(res3$species2$stressor1$Risk_map)
+terra::plot(res3$species2$stressor2$Risk_map)
+
+terra::plot(res3$species1$total_raw)
+terra::plot(res3$species2$total_raw)
+
+terra::plot(terra::mosaic(res3$species1$total_raw, res3$species2$total_raw, fun=sum))
+
+terra::plot(res3$species1$total)
+terra::plot(res3$species2$total)
+
+terra::plot(res3$ecosys_risk_raw)
+terra::plot(res3$ecosys_risk_classified)
 
 
+terra::plot(res3$species1$total_raw)
 
-res2$summary_stats
+export_maps(res3$species1$total_raw, "C:/Users/gusma/Documents/research/test_hra/curius_output11")
 
 
-decay <- get_decay(risa_maps$species_kernel_maps$species1$raster,
-                     risa_maps$stressor_kernel_maps$stressor1$raster,
-                     buffer_m = c(1000000),
-                     decay = "linear")
-
-terra::plot(res$stressor1$C_criteria)
-test <- risk_weight_djkl(decay, res$stressor1$C_criteria, 1.7)
+test <- decay_coeffs(rast_list[[1]][[1]][[1]],
+                     raster2 = spp_dist[[1]],
+                         decay = "linear",
+                         500000)
 terra::plot(test)
 
+test2 <- get_decay_map(rast_list[[1]][[1]][[1]], test, start_value = 1)
+terra::plot(test2)
 
-res$summary_stats
-terra::plot(res$stressor1$Risk_map_raw)
-terra::plot(res$stressor1$Risk_map_raw + decay)
+general_decay <- c(1:10)
+general_decay <- 1
 
-d <- terra::distance(risa_maps$stressor_kernel_maps$stressor1$raster)
-terra::plot(d)
+general_decay != 1
+is.integer(general_decay)

@@ -1,4 +1,4 @@
-get_decay <- function(species_kd, stressor_kd, buffer_m,
+decay_coeffs <- function(species_kd, stressor_kd, buffer_m,
                         decay = c("none", "linear", "exponential")) {
   decay <- match.arg(decay)
 
@@ -22,6 +22,7 @@ get_decay <- function(species_kd, stressor_kd, buffer_m,
 
   # distance (meters) from every cell to nearest stressor cell (>0)
   d <- terra::distance(str_mask)
+  d <- terra::ifel(d > buffer_m, NA, d)
 
   # Decay inside buffer
   within_buf <- d <= buffer_m
@@ -41,16 +42,17 @@ get_decay <- function(species_kd, stressor_kd, buffer_m,
 }
 
 
-# Helper to add buffer to target raster
-risk_weight_djkl <- function(djkl, raster, start_value) {
-  stopifnot(inherits(djkl, "SpatRaster"), inherits(raster, "SpatRaster"))
-  if (!terra::compareGeom(djkl, raster, stopOnError = FALSE))
-    stop("`djkl` and `raster` must have identical extent/resolution/CRS.")
+# Add buffer to target raster given another rasters with decay coefficients
+get_decay <- function(raster, decay_coefficients, start_value) {
+  stopifnot(inherits(raster, "SpatRaster"),
+            inherits(decay_coefficients, "SpatRaster"))
+  if (!terra::compareGeom(raster, decay_coefficients, stopOnError = FALSE))
+    stop("`decay_coefficients` and `raster` must have identical extent/resolution/CRS.")
 
   pos_only  <- terra::ifel(raster > 0, raster, NA)
 
-  out <- terra::ifel(raster == 0, djkl * start_value, raster * djkl)
+  out <- terra::ifel(raster == 0, decay_coefficients * start_value, raster * decay_coefficients)
 
-  names(out) <- "Djkl_weighted"
-  out
+  names(out) <- names(raster)
+  return(out)
 }

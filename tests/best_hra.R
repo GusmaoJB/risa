@@ -47,57 +47,6 @@ hra4 <- function(
     NULL
   }
 
-  .compute_summary_stats_single <- function(rr, total_risk_raw, total_class) {
-    stressor_names <- setdiff(names(rr), c("total_raw","total","summary_stats"))
-    rows <- lapply(stressor_names, function(st) {
-      E <- rr[[st]]$E_criteria
-      C <- rr[[st]]$C_criteria
-      Rr <- rr[[st]]$Risk_map_raw
-      Rc <- rr[[st]]$Risk_map
-      gE <- terra::global(E,  c("min","max","mean"), na.rm=TRUE)
-      gC <- terra::global(C,  c("min","max","mean"), na.rm=TRUE)
-      gR <- terra::global(Rr, c("min","max","mean"), na.rm=TRUE)
-
-      fq <- terra::freq(Rc)
-      cnt <- c(`0`=0,`1`=0,`2`=0,`3`=0)
-      if (!is.null(fq) && nrow(fq)) {
-        vv <- as.character(fq[, "value"]); cnt[vv] <- fq[, "count"]
-      }
-      tot <- sum(cnt)
-
-      data.frame(
-        STRESSOR = st,
-        E_min  = as.numeric(gE[1,"min"]), E_max = as.numeric(gE[1,"max"]), E_mean = as.numeric(gE[1,"mean"]),
-        C_min  = as.numeric(gC[1,"min"]), C_max = as.numeric(gC[1,"max"]), C_mean = as.numeric(gC[1,"mean"]),
-        R_min  = as.numeric(gR[1,"min"]), R_max = as.numeric(gR[1,"max"]), R_mean = as.numeric(gR[1,"mean"]),
-        `R%high`   = if (tot) 100*cnt["3"]/tot else NA_real_,
-        `R%medium` = if (tot) 100*cnt["2"]/tot else NA_real_,
-        `R%low`    = if (tot) 100*cnt["1"]/tot else NA_real_,
-        `R%None`   = if (tot) 100*cnt["0"]/tot else NA_real_
-      )
-    })
-    per <- do.call(rbind, rows)
-
-    fqt <- terra::freq(total_class)
-    cntt <- c(`0`=0,`1`=0,`2`=0,`3`=0)
-    if (!is.null(fqt) && nrow(fqt)) {
-      vv <- as.character(fqt[, "value"]); cntt[vv] <- fqt[, "count"]
-    }
-    tot <- sum(cntt)
-
-    overall <- data.frame(
-      STRESSOR="(FROM ALL STRESSORS)",
-      E_min=min(per$E_min,na.rm=TRUE), E_max=max(per$E_max,na.rm=TRUE), E_mean=mean(per$E_mean,na.rm=TRUE),
-      C_min=min(per$C_min,na.rm=TRUE), C_max=max(per$C_max,na.rm=TRUE), C_mean=mean(per$C_mean,na.rm=TRUE),
-      R_min=min(per$R_min,na.rm=TRUE), R_max=max(per$R_max,na.rm=TRUE), R_mean=mean(per$R_mean,na.rm=TRUE),
-      `R%high` = if (tot) 100*cntt["3"]/tot else NA_real_,
-      `R%medium` = if (tot) 100*cntt["2"]/tot else NA_real_,
-      `R%low` = if (tot) 100*cntt["1"]/tot else NA_real_,
-      `R%None` = if (tot) 100*cntt["0"]/tot else NA_real_
-    )
-    rbind(overall, per)
-  }
-
   .single <- function(rlist, sp_distr, crit, equation,
                       r_max, n_overlap, output_decimal_crs,
                       decay, buffer_m) {
@@ -190,7 +139,7 @@ hra4 <- function(
         stress_occ <- terra::ifel(is.na(r_mos), NA, 1)
         general_decay <- decay_coeffs(stress_occ,
                                       sp_presence,
-                                      decay = "complementary_decay_2nd",
+                                      decay = decay,
                                       buffer_m[[stressor]])
       }
 
@@ -206,13 +155,14 @@ hra4 <- function(
         E_opp <- E_score_raster - 1
         C_opp <- C_score_raster - 1
 
-        if (inherits(general_decay, 'SpatRaster')) {
-          E_opp <- terra::ifel(E_opp < 0, 0, E_opp)
-          C_opp <- terra::ifel(C_opp < 0, 0, C_opp)
-        }
-
         sqrt(E_opp^2 + C_opp^2) * general_decay
       }
+
+      # For exponential decay functions, rounding down values below 0.00005 to zero
+      # as it might overestimate the classification of low risk areas since the
+      # algorithm will classify any positive number into low risk, even if it is
+      #
+      risk_raw <- terra::ifel(risk_raw < 5e-5, 0, risk_raw)
       risk_raw <- terra::cover(risk_raw, sp_distr_zeros)
       risk_cls <- terra::ifel(
         risk_raw == 0, 0,
@@ -237,7 +187,7 @@ hra4 <- function(
 
     res$total_raw     <- total_raw
     res$total         <- total_cls
-    res$summary_stats <- .compute_summary_stats_single(res, total_raw, total_cls)
+    res$summary_stats <- compute_summary_stats_single(res, total_raw, total_cls)
 
     if (isTRUE(output_decimal_crs)) {
       for (st in names(res)) if (is.list(res[[st]])) {

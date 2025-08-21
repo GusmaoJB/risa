@@ -1,12 +1,10 @@
-#' Merge a list of 'sf' objects into a data frame of coordinates
+#' Merge a list of sf layers
 #'
-#' Combines multiple vector objects of class `sf` into a single data frame with X, Y, and group labels.
-#' Coordinates are the vertices of each geometry (POINT/LINESTRING/POLYGON/MULTI*).
-#' For polygons, ring-closing vertices are included as returned by `sf::st_coordinates()`.
-#'
-#' @param shp_list A list of `sf` objects.
-#' @param group_size Optional name of a column in each `sf` to repeat per vertex and include in the output.
-#' @returns A data.frame with columns `X`, `Y`, `group`, and optionally `group_size`.
+#' @param shp_list list of sf objects
+#' @param group_size optional column name to carry into points mode (old behavior)
+#' @param return one of c("sf_union","points") — default "sf_union" for risa_prep()
+#' @return if return = "sf_union": an sf with dissolved geometry (union of inputs)
+#'         if return = "points":   a data.frame of XY (old behavior)
 #' @examples
 #' # Create test data
 #' vec1 <- df_to_shp(data.frame(long = c(1,2,2,4), lat = c(4,4,2,2)))
@@ -16,7 +14,9 @@
 #' # Convert vector list into data.frame
 #' df <- merge_shp(vec_list)
 #' @export
-merge_shp <- function(shp_list, group_size = NULL) {
+merge_shp <- function(shp_list, group_size = NULL, return = c("sf_union","points")) {
+  return <- match.arg(return)
+
   if (!is.list(shp_list) || length(shp_list) == 0L) {
     stop("`shp_list` must be a non-empty list of sf objects.")
   }
@@ -24,52 +24,62 @@ merge_shp <- function(shp_list, group_size = NULL) {
     stop("All elements of `shp_list` must be sf objects.")
   }
 
+  # --------- New default: union to a single sf geometry (for risa_prep) -------
+  if (return == "sf_union") {
+    # Harmonize CRS to the first layer (safer than mixing)
+    crs0 <- sf::st_crs(shp_list[[1]])
+    shp_list <- lapply(shp_list, function(s) {
+      crsS <- sf::st_crs(s)
+      same <- !is.na(crsS) && !is.na(crs0) && identical(crsS$wkt, crs0$wkt)
+      if (!same) sf::st_transform(s, crs0) else s
+    })
+
+    # Union all geometries; handle single-element list
+    geoms <- lapply(shp_list, sf::st_geometry)
+    geom_union <- if (length(geoms) == 1L) geoms[[1]] else Reduce(sf::st_union, geoms)
+
+    # Wrap back to sf (CRS preserved)
+    return(sf::st_as_sf(geom_union))
+  }
+
   # Warn if CRSs differ; coordinates will be mixed as-is
   crs_keys <- vapply(shp_list, function(s) {
     crs <- sf::st_crs(s)
-    if (!is.null(crs$epsg)) paste0("epsg:", crs$epsg) else crs$wkt %||% "NA"
+    if (!is.null(crs$epsg)) paste0("epsg:", crs$epsg) else if (!is.null(crs$wkt)) crs$wkt else "NA"
   }, character(1))
   if (length(unique(crs_keys)) > 1L) {
     warning("Input layers have different CRS; coordinates are kept as-is. Consider transforming beforehand.")
   }
 
   out_list <- vector("list", length(shp_list))
+  nm_list  <- names(shp_list)
 
   for (i in seq_along(shp_list)) {
     shp <- shp_list[[i]]
+    group_name <- if (!is.null(nm_list) && nzchar(nm_list[i])) nm_list[i] else as.character(i)
 
-    group_name <-
-      if (!is.null(names(shp_list)) && nzchar(names(shp_list)[i])) names(shp_list)[i] else as.character(i)
-
-    # One row per vertex
+    # Coordinates for all vertices
     coords <- sf::st_coordinates(shp)
 
-    # Base columns
-    data_out <- data.frame(
+    df <- data.frame(
       X = coords[, 1],
       Y = coords[, 2],
       group = rep(group_name, nrow(coords)),
       stringsAsFactors = FALSE
     )
 
-    # Repeat attribute per vertex if requested and present
     if (!is.null(group_size) && group_size %in% names(shp)) {
-      # Number of vertices per feature
       n_per_feat <- sf::st_npoints(sf::st_geometry(shp), by_feature = TRUE)
-      data_out[[group_size]] <- rep(shp[[group_size]], times = n_per_feat)
+      df[[group_size]] <- rep(shp[[group_size]], times = n_per_feat)
     }
 
-    out_list[[i]] <- data_out
+    out_list[[i]] <- df
   }
 
   out <- do.call(rbind, out_list)
   row.names(out) <- NULL
   out
 }
-
-# A helper function to deal with null values
-`%||%` <- function(x, y) if (is.null(x)) y else x
-
 
 #' Convert a data.frame to an sf object
 #'
@@ -257,4 +267,79 @@ list_depth_base <- function(x) {
     return(if (is.list(x)) 1L else 0L)
   }
   1L + max(vapply(x, list_depth_base, integer(1)))
+}
+
+
+#' Convert an object into a named list of `sf` objects
+#'
+#' This function standardizes different input types (`sf`, `data.frame`,
+#' or list of those) into a named list of `sf` objects. It is useful for
+#' preparing heterogeneous inputs before further spatial operations.
+#'
+#' If the input is:
+#' - An `sf` object: it will be wrapped into a list with a name.
+#' - A `data.frame`: it will be converted into an `sf` object using
+#'   `df_to_shp()` or split by a grouping column if provided.
+#' - A list: each element must be an `sf` object or a `data.frame`, which
+#'   will be converted accordingly. Names are preserved when possible,
+#'   otherwise they are auto-generated using `label_prefix`.
+#'
+#' @param obj An object of class `sf`, `data.frame`, or a list of those.
+#' @param group Optional. A column name (string) used to split a
+#'   `data.frame` into multiple `sf` layers. Ignored if `obj` is not a
+#'   `data.frame`.
+#' @param label_prefix Character string used as prefix for auto-generated
+#'   names if input layers are unnamed. Default is `"layer"`.
+#' @return A named list of `sf` objects.
+#' @examples
+#' \dontrun{
+#' library(sf)
+#'
+#' # Example with a single sf object
+#' nc <- st_read(system.file("shape/nc.shp", package="sf"), quiet = TRUE)
+#' lst1 <- as_sf_list(nc)
+#'
+#' # Example with a data.frame (requires df_to_shp defined in package)
+#' df <- data.frame(x = c(1,2), y = c(3,4), id = c("A","B"))
+#' lst2 <- as_sf_list(df)
+#'
+#' # Example with a list of sf/data.frame
+#' lst3 <- as_sf_list(list(nc1 = nc[1:10,], nc2 = nc[11:20,]))
+#' }
+#'
+#' @export
+as_sf_list <- function(obj, group = NULL, label_prefix = "layer") {
+  if (inherits(obj, "sf")) {
+    nm <- if (!is.null(attr(obj, "name")) && nzchar(attr(obj, "name"))) {
+      attr(obj, "name")
+    } else label_prefix
+    return(setNames(list(obj), nm))
+  }
+  if (is.data.frame(obj)) {
+    if (!is.null(group) && group %in% names(obj)) {
+      sp <- split(obj, obj[[group]], drop = TRUE)
+      lst <- lapply(sp, df_to_shp)
+      return(lst)
+    } else {
+      return(df_to_list(obj))
+    }
+  }
+  if (is.list(obj)) {
+    nms <- names(obj)
+    lst <- lapply(obj, function(el) {
+      if (inherits(el, "sf")) return(el)
+      if (is.data.frame(el))  return(df_to_shp(el))
+      stop("List elements must be `sf` or data.frame.")
+    })
+    if (is.null(nms) || any(!nzchar(nms))) {
+      if (!is.null(nms)) {
+        nms[nchar(nms) == 0] <- paste0(label_prefix, seq_len(sum(nchar(nms) == 0)))
+        names(lst) <- nms
+      } else {
+        names(lst) <- paste0(label_prefix, seq_along(lst))
+      }
+    }
+    return(lst)
+  }
+  stop("Input must be an `sf`, data.frame, or a list of those.")
 }

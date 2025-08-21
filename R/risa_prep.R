@@ -29,7 +29,7 @@
 #' @importFrom sf st_as_sfc st_transform st_crs st_is_longlat st_bbox st_set_crs
 #' @importFrom terra project crs res
 #' @examples
-#' # See previous examples in your docs
+#' # add example here
 #' @export
 risa_prep <- function(
     x, y,
@@ -51,8 +51,7 @@ risa_prep <- function(
     area_buffer_frac = 0.5,
     return_crs = c("metric","4326"),
     overlap_method = c("product","sum","geom_mean","max"),
-    quiet = TRUE
-) {
+    quiet = TRUE) {
   output_layer_type <- match.arg(output_layer_type)
   radius_method <- match.arg(radius_method)
   area_strategy <- match.arg(area_strategy)
@@ -60,61 +59,7 @@ risa_prep <- function(
   return_crs <- match.arg(return_crs)
   overlap_method <- match.arg(overlap_method)
 
-  # ---- Helpers --------------------------------------------------------------
-
-  as_sf_list <- function(obj, group = NULL, label_prefix = "layer") {
-    if (inherits(obj, "sf")) {
-      nm <- if (!is.null(names(obj)) && any(nzchar(names(obj)))) names(obj)[1] else label_prefix
-      return(setNames(list(obj), nm))
-    }
-    if (is.data.frame(obj)) {
-      if (!is.null(group) && group %in% names(obj)) {
-        sp <- split(obj, obj[[group]], drop = TRUE)
-        lst <- lapply(sp, df_to_shp)
-        return(lst)
-      } else {
-        return(df_to_list(obj))
-      }
-    }
-    if (is.list(obj)) {
-      nms <- names(obj)
-      lst <- lapply(obj, function(el) {
-        if (inherits(el, "sf")) return(el)
-        if (is.data.frame(el))  return(df_to_shp(el))
-        stop("List elements must be `sf` or data.frame.")
-      })
-      if (is.null(nms) || any(!nzchar(nms))) {
-        if (!is.null(nms)) {
-          nms[nchar(nms) == 0] <- paste0(label_prefix, seq_len(sum(nchar(nms) == 0)))
-          names(lst) <- nms
-        } else {
-          names(lst) <- paste0(label_prefix, seq_along(lst))
-        }
-      }
-      return(lst)
-    }
-    stop("Input must be an `sf`, data.frame, or a list of those.")
-  }
-
-  merge_shp <- function(lst) {
-    if (!length(lst)) stop("No layers provided to build the AOI.")
-    if (!all(vapply(lst, function(z) inherits(z, "sf"), logical(1)))) {
-      stop("All elements must be 'sf' objects.")
-    }
-
-    crs0 <- sf::st_crs(lst[[1]])
-    lst  <- lapply(lst, function(g) {
-      crsg <- sf::st_crs(g)
-      same <- !is.na(crsg) && !is.na(crs0) && identical(crsg$wkt, crs0$wkt)
-      if (!same) sf::st_transform(g, crs0) else g
-    })
-
-    geoms <- lapply(lst, sf::st_geometry)
-    geom_union <- if (length(geoms) == 1L) geoms[[1]] else Reduce(sf::st_union, geoms)
-
-    # st_union keeps CRS; just wrap back to sf
-    sf::st_as_sf(geom_union)
-  }
+  # Helpers
 
   # Fail-fast guards for metric, square outputs
   .check_square_metric <- function(r) {
@@ -141,12 +86,10 @@ risa_prep <- function(
   }
 
   # Normalize inputs to sf lists
-
   spp_list <- as_sf_list(x, group = group_x, label_prefix = "sp")
   str_list <- as_sf_list(y, group = group_y, label_prefix = "stressor")
 
-  # ---- Choose or build AOI --------------------------------------------------
-
+  # Choose or build AOI
   if (is.null(area)) {
     if (!quiet) message("No area provided; creating AOI from ", area_strategy, " layers (", area_type, ").")
     src <- switch(area_strategy,
@@ -191,7 +134,6 @@ risa_prep <- function(
   }
 
   # Kernels builder (passes pixel_size forward)
-
   build_kernels <- function(lst, group_size = NULL, ncls = n_classes) {
     lapply(lst, function(item) {
       get_class_kernel(
@@ -202,7 +144,7 @@ risa_prep <- function(
         radius = radius,
         radius_method = radius_method,
         group_size = group_size,
-        pixel_size = pixel_size,     # <-- key: guarantees square cells if set
+        pixel_size = pixel_size,
         dimyx = dimyx,
         exclude_lowest = exclude_lowest,
         lowest_prop = lowest_prop,
@@ -225,27 +167,7 @@ risa_prep <- function(
     area_out <- area_metric
   }
 
-  # WKT we expect on metric outputs
-  crs_metric_wkt <- sf::st_crs(area_metric)$wkt
-
-  .set_crs_if_missing <- function(r) {
-    if (inherits(r, "SpatRaster")) {
-      crs_str <- terra::crs(r)
-      if (is.na(crs_str) || !nzchar(crs_str)) {
-        terra::crs(r) <- crs_metric_wkt
-      }
-    }
-    r
-  }
-
-  .stamp_container_crs <- function(x) {
-    if (inherits(x, "SpatRaster")) return(.set_crs_if_missing(x))
-    if (is.list(x)) return(lapply(x, .stamp_container_crs))
-    x
-  }
-
-  # ---- Overlap maps ---------------------------------------------------------
-
+  # Overlap maps
   if (!quiet) message("Generating overlap maps...")
   overlap_maps_list <- lapply(spp_kernel_list, function(sp) {
     lapply(stressor_kernel_list, function(st) {
@@ -270,9 +192,62 @@ risa_prep <- function(
     })
   })
 
-  # ---- Guard rails for metric outputs (square + meter grid) -----------------
+  # Build a square template in the metric CRS and regrid outputs to it
   if (return_crs == "metric") {
-    # stamp distributions/kernels
+    crs_metric_wkt <- sf::st_crs(area_metric)$wkt
+    if (is.na(crs_metric_wkt) || !nzchar(crs_metric_wkt)) {
+      stop("Target metric CRS is missing; cannot stamp CRS on outputs.")
+    }
+
+    .make_template <- function(aoi_sf, crs_wkt, res_m) {
+      bb  <- sf::st_bbox(aoi_sf)
+      ext <- terra::ext(bb["xmin"], bb["xmax"], bb["ymin"], bb["ymax"])
+      terra::rast(extent = ext, crs = crs_wkt, resolution = c(res_m, res_m))
+    }
+    .regrid_to_template <- function(r, template) {
+      if (!inherits(r, "SpatRaster")) return(r)
+      r2 <- if (!identical(terra::crs(r), terra::crs(template))) {
+        terra::project(r, template, method = "near")
+      } else r
+      terra::resample(r2, template, method = "near")
+    }
+
+    template <- .make_template(area_metric, crs_metric_wkt, pixel_size)
+
+    # regrid distributions / kernels
+    for (nm in names(spp_distribution_list)) {
+      spp_distribution_list[[nm]]$raster <- .regrid_to_template(spp_distribution_list[[nm]]$raster, template)
+    }
+    for (nm in names(str_distribution_list)) {
+      str_distribution_list[[nm]]$raster <- .regrid_to_template(str_distribution_list[[nm]]$raster, template)
+    }
+    for (nm in names(spp_kernel_list)) {
+      spp_kernel_list[[nm]]$raster <- .regrid_to_template(spp_kernel_list[[nm]]$raster, template)
+    }
+    for (nm in names(stressor_kernel_list)) {
+      stressor_kernel_list[[nm]]$raster <- .regrid_to_template(stressor_kernel_list[[nm]]$raster, template)
+    }
+    # overlaps (handle both SpatRaster and list with $raster)
+    for (i in names(overlap_maps_list)) for (j in names(overlap_maps_list[[i]])) {
+      ol <- overlap_maps_list[[i]][[j]]
+      if (inherits(ol, "SpatRaster")) {
+        overlap_maps_list[[i]][[j]] <- .regrid_to_template(ol, template)
+      } else if (is.list(ol) && "raster" %in% names(ol)) {
+        overlap_maps_list[[i]][[j]]$raster <- .regrid_to_template(ol$raster, template)
+      }
+    }
+
+    # Stamp CRS on any rasters missing it
+    .set_crs_if_missing <- function(r) {
+      if (inherits(r, "SpatRaster")) {
+        crs_str <- terra::crs(r)
+        if (is.na(crs_str) || !nzchar(crs_str)) {
+          terra::crs(r) <- crs_metric_wkt
+        }
+      }
+      r
+    }
+
     for (nm in names(spp_distribution_list)) {
       spp_distribution_list[[nm]]$raster <- .set_crs_if_missing(spp_distribution_list[[nm]]$raster)
     }
@@ -285,7 +260,6 @@ risa_prep <- function(
     for (nm in names(stressor_kernel_list)) {
       stressor_kernel_list[[nm]]$raster <- .set_crs_if_missing(stressor_kernel_list[[nm]]$raster)
     }
-    # stamp overlaps (handle both raw SpatRaster and list with $raster)
     for (i in names(overlap_maps_list)) for (j in names(overlap_maps_list[[i]])) {
       ol <- overlap_maps_list[[i]][[j]]
       if (inherits(ol, "SpatRaster")) {
@@ -294,27 +268,29 @@ risa_prep <- function(
         overlap_maps_list[[i]][[j]]$raster <- .set_crs_if_missing(ol$raster)
       }
     }
-  }
 
-  if (return_crs == "metric") {
-    # distribution rasters
-    for (nm in names(spp_distribution_list))  .check_square_metric(spp_distribution_list[[nm]]$raster)
-    for (nm in names(str_distribution_list))  .check_square_metric(str_distribution_list[[nm]]$raster)
-    # kernel rasters
-    for (nm in names(spp_kernel_list))        .check_square_metric(spp_kernel_list[[nm]]$raster)
-    for (nm in names(stressor_kernel_list))   .check_square_metric(stressor_kernel_list[[nm]]$raster)
-    # overlap rasters
-    for (i in names(overlap_maps_list)) {
-      for (j in names(overlap_maps_list[[i]])) {
-        ol <- overlap_maps_list[[i]][[j]]
-        if (inherits(ol, "SpatRaster")) .check_square_metric(ol)
-        if (is.list(ol) && "raster" %in% names(ol)) .check_square_metric(ol$raster)
+    # Enforce square + metric (final guard)
+    for (nm in names(spp_distribution_list)) .check_square_metric(spp_distribution_list[[nm]]$raster)
+    for (nm in names(str_distribution_list)) .check_square_metric(str_distribution_list[[nm]]$raster)
+    for (nm in names(spp_kernel_list)) .check_square_metric(spp_kernel_list[[nm]]$raster)
+    for (nm in names(stressor_kernel_list)) .check_square_metric(stressor_kernel_list[[nm]]$raster)
+    for (i in names(overlap_maps_list)) for (j in names(overlap_maps_list[[i]])) {
+      ol <- overlap_maps_list[[i]][[j]]
+      if (inherits(ol, "SpatRaster")) .check_square_metric(ol)
+      if (is.list(ol) && "raster" %in% names(ol)) .check_square_metric(ol$raster)
+    }
+
+    # If overlaps must include rasters for HRA, enforce:
+    for (i in names(overlap_maps_list)) for (j in names(overlap_maps_list[[i]])) {
+      ol <- overlap_maps_list[[i]][[j]]
+      has_raster <- inherits(ol, "SpatRaster") || (is.list(ol) && "raster" %in% names(ol))
+      if (!has_raster && output_layer_type == "raster") {
+        stop("Overlap map missing raster output; set output_layer_type to include raster.")
       }
     }
   }
 
-  # ---- Assemble -------------------------------------------------------------
-
+  # Assemble
   out <- list(
     species_distributions = spp_distribution_list,
     stressor_distributions = str_distribution_list,

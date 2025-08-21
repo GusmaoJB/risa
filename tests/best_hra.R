@@ -10,6 +10,7 @@ hra4 <- function(
   depth <- list_depth_base(raster_list)
   equation <- match.arg(equation)
   decay <- match.arg(decay)
+  m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
 
   # Helpers
   .check_criteria <- function(df_or_list) {
@@ -125,7 +126,6 @@ hra4 <- function(
     zero_r         <- sp_distr * 0
 
     res <- setNames(vector("list", length(names(rlist))), names(rlist))
-    m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
 
     for (stressor in names(rlist)) {
       crit_stressor <- crit[is.na(crit$STRESSOR) | crit$STRESSOR %in% c("", "NA", stressor), , drop=FALSE]
@@ -228,7 +228,6 @@ hra4 <- function(
       )
     }
 
-    print(m_jkl*n_overlap)
     total_raw <- Reduce(`+`, lapply(res, function(x) x$Risk_map_raw))
     total_cls <- terra::ifel(
       total_raw == 0, 0,
@@ -303,44 +302,37 @@ hra4 <- function(
   })
   names(results) <- species
 
+  # Calculating ecosystem risk
   # Ecosystem presence mask on template grid (union of species)
   presences <- lapply(sd, function(d) terra::ifel(!is.na(.align_to(d, template, TRUE)), 1, 0))
   sum_pres  <- Reduce(`+`, presences)
   eco_mask  <- terra::ifel(sum_pres > 0, 1, NA)
 
-  # Ecosystem risk: average of species' total_raw, aligned to template
-  # 1) Align, keep NAs
-  m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
+  # Align per-species general risk (total_raw) to template (continuous)
   rlist <- lapply(species, function(sp) {
     r <- results[[sp]]$total_raw
     .align_to(r, template, categorical = FALSE)
   })
 
-  # 2) Make a multilayer SpatRaster
+  # Make a multilayer SpatRaster
   stk <- terra::rast(rlist)
 
-  # 3) Sum across layers, ignoring NAs (ecosystem risk sum)
-  eco_raw <- terra::app(stk, sum, na.rm = TRUE)
+  # Per-cell sum of risks (ignore NA) and per-cell count of overlapping species
+  eco_sum <- terra::app(stk, sum, na.rm = TRUE)
+  eco_cnt <- terra::app(stk, function(v) sum(!is.na(v)))
 
-  # Ecosystem risk: average of species' total_raw, aligned to template
-  # m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
-  #eco_raw <- template * 0
-#  for (sp in species) {
-#    r <- results[[sp]]$total_raw
-#    r <- .align_to(r, template, categorical = FALSE) # continuous
-#    r <- terra::ifel(is.na(r), 0, r)
-#    eco_raw <- eco_raw + r
-#  }
+  # Average over overlapping species only (sum / count), keep NA where count==0
+  eco_raw <- terra::ifel(eco_cnt > 0, eco_sum / eco_cnt, NA)
 
-  eco_raw <- eco_raw / length(species)
+  # Ensure zeros inside the union mask
   eco_raw <- terra::cover(eco_raw, terra::ifel(!is.na(eco_mask), 0, NA))
+
+  # Classify ecosystem risk using same n_overlap scaling
   eco_cls <- terra::ifel(
     eco_raw == 0, 0,
     terra::ifel(eco_raw < (1/3)*m_jkl*n_overlap, 1,
                 terra::ifel(eco_raw < (2/3)*m_jkl*n_overlap, 2, 3))
   )
-
-
 
   # Summary table
   per_species_stats <- do.call(rbind, lapply(names(results), function(sp) {

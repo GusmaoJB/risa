@@ -97,23 +97,50 @@ risa_prep <- function(
   }
 
   merge_shp <- function(lst) {
-    # simple union binder for AOI derivation
-    sf::st_union(do.call(rbind, lapply(lst, sf::st_as_sf)))
+    if (!length(lst)) stop("No layers provided to build the AOI.")
+    if (!all(vapply(lst, function(z) inherits(z, "sf"), logical(1)))) {
+      stop("All elements must be 'sf' objects.")
+    }
+
+    crs0 <- sf::st_crs(lst[[1]])
+    lst  <- lapply(lst, function(g) {
+      crsg <- sf::st_crs(g)
+      same <- !is.na(crsg) && !is.na(crs0) && identical(crsg$wkt, crs0$wkt)
+      if (!same) sf::st_transform(g, crs0) else g
+    })
+
+    geoms <- lapply(lst, sf::st_geometry)
+    geom_union <- if (length(geoms) == 1L) geoms[[1]] else Reduce(sf::st_union, geoms)
+
+    # st_union keeps CRS; just wrap back to sf
+    sf::st_as_sf(geom_union)
   }
 
   # Fail-fast guards for metric, square outputs
   .check_square_metric <- function(r) {
     if (!inherits(r, "SpatRaster")) return(invisible(TRUE))
-    if (terra::crs(r, describe = TRUE)$is_lonlat)
-      stop("Output raster is lon/lat but HRA requires metric CRS. Use return_crs='metric'.")
-    rs <- terra::res(r)
-    if (!isTRUE(all.equal(rs[1], rs[2])))
+    crs_str <- terra::crs(r)
+    if (is.na(crs_str) || !nzchar(crs_str)) {
+      stop("Output raster has no CRS defined. Stamp a metric CRS before HRA (use return_crs='metric').")
+    }
+    info <- terra::crs(r, describe = TRUE)
+    is_ll <- tryCatch(isTRUE(info$is_lonlat), error = function(e) NA)
+    if (isTRUE(is_ll)) stop("Output raster is lon/lat but HRA requires metric CRS. Use return_crs='metric'.")
+    rs <- as.numeric(terra::res(r))
+    if (length(rs) < 2L) stop("Raster resolution is invalid (length < 2).")
+    if (!isTRUE(all.equal(rs[1], rs[2]))) {
       stop(sprintf("Output raster has non-square cells (xres=%.6f, yres=%.6f). Set pixel_size or adjust dimyx.",
                    rs[1], rs[2]))
+    }
+    # Optional: catch rotated/sheared transforms (can also trigger GDAL warnings)
+    gt <- tryCatch(terra::geotransform(r), error = function(e) NULL)
+    if (!is.null(gt) && (gt[3] != 0 || gt[5] != 0)) {
+      stop("Raster has rotation/shear; reproject/resample to a north-up grid.")
+    }
     invisible(TRUE)
   }
 
-  # ---- Normalize inputs to sf lists ----------------------------------------
+  # Normalize inputs to sf lists
 
   spp_list <- as_sf_list(x, group = group_x, label_prefix = "sp")
   str_list <- as_sf_list(y, group = group_y, label_prefix = "stressor")
@@ -141,24 +168,29 @@ risa_prep <- function(
   }
 
   # If metric outputs are requested, ensure AOI is in a metric CRS
-  if (return_crs == "metric" && sf::st_is_longlat(area)) {
-    area_metric <- transform_to_metric(area)  # package helper: choose UTM/Polar
+  is_ll <- suppressWarnings(sf::st_is_longlat(area))
+  if (isTRUE(is_ll) && return_crs == "metric") {
+    area_metric <- transform_to_metric(area)
   } else {
     area_metric <- area
   }
 
-  # ---- Auto-derive a square pixel_size (meters) if needed -------------------
-
+  # Auto-derive a square pixel_size (meters) if needed
   if (return_crs == "metric" && is.null(pixel_size)) {
     bb <- sf::st_bbox(area_metric)
     dx <- as.numeric(bb["xmax"] - bb["xmin"])
     dy <- as.numeric(bb["ymax"] - bb["ymin"])
-    # Use the tighter dimension so cells are square and do not exceed requested dimyx
+    if (!is.finite(dx) || !is.finite(dy) || dx <= 0 || dy <= 0) {
+      stop("AOI has zero or invalid extent; cannot derive pixel_size. Check 'area'.")
+    }
     pixel_size <- min(dx / dimyx[2], dy / dimyx[1])
+    if (!is.finite(pixel_size) || pixel_size <= 0) {
+      stop("Derived pixel_size non-positive; adjust 'dimyx' or provide 'pixel_size'.")
+    }
     if (!quiet) message(sprintf("Auto pixel_size (square): %.3f m", pixel_size))
   }
 
-  # ---- Kernels builder (passes pixel_size forward) --------------------------
+  # Kernels builder (passes pixel_size forward)
 
   build_kernels <- function(lst, group_size = NULL, ncls = n_classes) {
     lapply(lst, function(item) {
@@ -193,6 +225,25 @@ risa_prep <- function(
     area_out <- area_metric
   }
 
+  # WKT we expect on metric outputs
+  crs_metric_wkt <- sf::st_crs(area_metric)$wkt
+
+  .set_crs_if_missing <- function(r) {
+    if (inherits(r, "SpatRaster")) {
+      crs_str <- terra::crs(r)
+      if (is.na(crs_str) || !nzchar(crs_str)) {
+        terra::crs(r) <- crs_metric_wkt
+      }
+    }
+    r
+  }
+
+  .stamp_container_crs <- function(x) {
+    if (inherits(x, "SpatRaster")) return(.set_crs_if_missing(x))
+    if (is.list(x)) return(lapply(x, .stamp_container_crs))
+    x
+  }
+
   # ---- Overlap maps ---------------------------------------------------------
 
   if (!quiet) message("Generating overlap maps...")
@@ -220,6 +271,30 @@ risa_prep <- function(
   })
 
   # ---- Guard rails for metric outputs (square + meter grid) -----------------
+  if (return_crs == "metric") {
+    # stamp distributions/kernels
+    for (nm in names(spp_distribution_list)) {
+      spp_distribution_list[[nm]]$raster <- .set_crs_if_missing(spp_distribution_list[[nm]]$raster)
+    }
+    for (nm in names(str_distribution_list)) {
+      str_distribution_list[[nm]]$raster <- .set_crs_if_missing(str_distribution_list[[nm]]$raster)
+    }
+    for (nm in names(spp_kernel_list)) {
+      spp_kernel_list[[nm]]$raster <- .set_crs_if_missing(spp_kernel_list[[nm]]$raster)
+    }
+    for (nm in names(stressor_kernel_list)) {
+      stressor_kernel_list[[nm]]$raster <- .set_crs_if_missing(stressor_kernel_list[[nm]]$raster)
+    }
+    # stamp overlaps (handle both raw SpatRaster and list with $raster)
+    for (i in names(overlap_maps_list)) for (j in names(overlap_maps_list[[i]])) {
+      ol <- overlap_maps_list[[i]][[j]]
+      if (inherits(ol, "SpatRaster")) {
+        overlap_maps_list[[i]][[j]] <- .set_crs_if_missing(ol)
+      } else if (is.list(ol) && "raster" %in% names(ol)) {
+        overlap_maps_list[[i]][[j]]$raster <- .set_crs_if_missing(ol$raster)
+      }
+    }
+  }
 
   if (return_crs == "metric") {
     # distribution rasters

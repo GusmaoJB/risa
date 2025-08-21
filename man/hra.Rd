@@ -34,10 +34,11 @@ If an element is a list, the first SpatRaster within it will be used.}
 "risaHRA" list with per-stressor maps, totals, and summary_stats
 }
 \description{
-Implements the Natural Capital Project’s InVEST Habitat Risk Assessment (HRA)
-model to estimate spatial risk from multiple stressors to a species/habitat
-(single-species mode) or across multiple species (ecosystem mode). For each
-stressor, the function combines Exposure (E) and Consequence (C) criteria—
+Implements the Natural Capital Project’s InVEST Habitat Risk Assessment (HRA;
+Sharp et al., 2016) model to estimate spatial risk from multiple stressors to
+a species/habitat (single-species mode) or across multiple species (ecosystem
+mode). The model estimates are based on Arkema et al. (2014), in which, for
+each stressor, the function combines Exposure (E) and Consequence (C) criteria—
 mixing mapped rasters and constant scores—using either the Euclidean or
 Multiplicative InVEST risk equations. Inputs can be nested lists of rasters
 (stressor → attributes; or species → stressor → attributes) plus a species

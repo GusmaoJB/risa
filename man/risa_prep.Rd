@@ -77,36 +77,5 @@ Generates kernel density maps for species and stressors, plus overlap maps,
 within an area of interest (auto or user-supplied).
 }
 \examples{
-# Creating test data
-spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
-lat = rnorm(80, 0, 10), species = "sp1"),
-data.frame(long = rnorm(60, 0, 10),
-lat = rnorm(60, 0, 10), species = "sp2"))
-str_df <- rbind(data.frame(long = rnorm(100, 0, 10),
-lat = rnorm(100, 0, 10), stressor = "trawling"),
-data.frame(long = rnorm(50, 0, 10),
-lat = rnorm(100, 0, 5), stressor = "gillnet"))
-# Create kernel maps of species and stressor distributions and overlap maps
-risa_maps <- risa_prep(spp_df, str_df)
-
-# Species and Stressor distributions
-dev.off()
-par(mfrow = c(2,2))
-plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 1")
-plot(risa_maps$species_kernel_maps$sp1$shp, add = TRUE)
-plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 2")
-plot(risa_maps$species_kernel_maps$sp2$shp, add = TRUE)
-plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Gillnet")
-plot(risa_maps$stressor_kernel_maps$gillnet$shp, add = TRUE, col=c("lightgreen", "green", "darkgreen"))
-plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Trawling")
-plot(risa_maps$stressor_kernel_maps$trawling$shp, add = TRUE, col=c("lightgreen", "green", "darkgreen"))
-# Overlap maps
-plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Gillnet")
-plot(risa_maps$overlap_maps$sp1$gillnet$shp, add = TRUE, col=c("yellow", "orange", "red"))
-plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Gillnet")
-plot(risa_maps$overlap_maps$sp2$gillnet$shp, add = TRUE, col=c("yellow", "orange", "red"))
-plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Trawling")
-plot(risa_maps$overlap_maps$sp1$trawling$shp, add = TRUE, col=c("yellow", "orange", "red"))
-plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Trawling")
-plot(risa_maps$overlap_maps$sp2$trawling$shp, add = TRUE, col=c("yellow", "orange", "red"))
+# See previous examples in your docs
 }

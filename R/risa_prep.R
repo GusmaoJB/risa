@@ -26,41 +26,10 @@
 #' @param quiet Suppress messages (default TRUE).
 #' @return A list with: `species_distributions`, `stressor_distributions`,
 #'   `species_kernel_maps`, `stressor_kernel_maps`, `overlap_maps`, and `area_of_interest`.
-#' @importFrom sf st_as_sfc st_transform
-#' @importFrom terra project
+#' @importFrom sf st_as_sfc st_transform st_crs st_is_longlat st_bbox st_set_crs
+#' @importFrom terra project crs res
 #' @examples
-#' # Creating test data
-#' spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
-#' lat = rnorm(80, 0, 10), species = "sp1"),
-#' data.frame(long = rnorm(60, 0, 10),
-#' lat = rnorm(60, 0, 10), species = "sp2"))
-#' str_df <- rbind(data.frame(long = rnorm(100, 0, 10),
-#' lat = rnorm(100, 0, 10), stressor = "trawling"),
-#' data.frame(long = rnorm(50, 0, 10),
-#' lat = rnorm(100, 0, 5), stressor = "gillnet"))
-#' # Create kernel maps of species and stressor distributions and overlap maps
-#' risa_maps <- risa_prep(spp_df, str_df)
-#'
-#' # Species and Stressor distributions
-#' dev.off()
-#' par(mfrow = c(2,2))
-#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 1")
-#' plot(risa_maps$species_kernel_maps$sp1$shp, add = TRUE)
-#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species 2")
-#' plot(risa_maps$species_kernel_maps$sp2$shp, add = TRUE)
-#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Gillnet")
-#' plot(risa_maps$stressor_kernel_maps$gillnet$shp, add = TRUE, col=c("lightgreen", "green", "darkgreen"))
-#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Trawling")
-#' plot(risa_maps$stressor_kernel_maps$trawling$shp, add = TRUE, col=c("lightgreen", "green", "darkgreen"))
-#' # Overlap maps
-#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Gillnet")
-#' plot(risa_maps$overlap_maps$sp1$gillnet$shp, add = TRUE, col=c("yellow", "orange", "red"))
-#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Gillnet")
-#' plot(risa_maps$overlap_maps$sp2$gillnet$shp, add = TRUE, col=c("yellow", "orange", "red"))
-#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species1 vs Trawling")
-#' plot(risa_maps$overlap_maps$sp1$trawling$shp, add = TRUE, col=c("yellow", "orange", "red"))
-#' plot(sf::st_geometry(risa_maps$area_of_interest), border = "blue", axes=TRUE, main="Species2 vs Trawling")
-#' plot(risa_maps$overlap_maps$sp2$trawling$shp, add = TRUE, col=c("yellow", "orange", "red"))
+#' # See previous examples in your docs
 #' @export
 risa_prep <- function(
     x, y,
@@ -91,18 +60,15 @@ risa_prep <- function(
   return_crs <- match.arg(return_crs)
   overlap_method <- match.arg(overlap_method)
 
-  # Helper: normalize to a named list of sf
+  # ---- Helpers --------------------------------------------------------------
+
   as_sf_list <- function(obj, group = NULL, label_prefix = "layer") {
-    # sf: wrap as single-element list
     if (inherits(obj, "sf")) {
       nm <- if (!is.null(names(obj)) && any(nzchar(names(obj)))) names(obj)[1] else label_prefix
       return(setNames(list(obj), nm))
     }
-
-    # If data.frame: split or convert
     if (is.data.frame(obj)) {
       if (!is.null(group) && group %in% names(obj)) {
-        # split by explicit group col
         sp <- split(obj, obj[[group]], drop = TRUE)
         lst <- lapply(sp, df_to_shp)
         return(lst)
@@ -110,8 +76,6 @@ risa_prep <- function(
         return(df_to_list(obj))
       }
     }
-
-    # If generic list: each element must be sf or data.frame
     if (is.list(obj)) {
       nms <- names(obj)
       lst <- lapply(obj, function(el) {
@@ -120,51 +84,93 @@ risa_prep <- function(
         stop("List elements must be `sf` or data.frame.")
       })
       if (is.null(nms) || any(!nzchar(nms))) {
-        names(lst) <- if (!is.null(nms)) {
-          # fill any empties
+        if (!is.null(nms)) {
           nms[nchar(nms) == 0] <- paste0(label_prefix, seq_len(sum(nchar(nms) == 0)))
-          nms
+          names(lst) <- nms
         } else {
-          paste0(label_prefix, seq_along(lst))
+          names(lst) <- paste0(label_prefix, seq_along(lst))
         }
       }
       return(lst)
     }
-
     stop("Input must be an `sf`, data.frame, or a list of those.")
   }
+
+  merge_shp <- function(lst) {
+    # simple union binder for AOI derivation
+    sf::st_union(do.call(rbind, lapply(lst, sf::st_as_sf)))
+  }
+
+  # Fail-fast guards for metric, square outputs
+  .check_square_metric <- function(r) {
+    if (!inherits(r, "SpatRaster")) return(invisible(TRUE))
+    if (terra::crs(r, describe = TRUE)$is_lonlat)
+      stop("Output raster is lon/lat but HRA requires metric CRS. Use return_crs='metric'.")
+    rs <- terra::res(r)
+    if (!isTRUE(all.equal(rs[1], rs[2])))
+      stop(sprintf("Output raster has non-square cells (xres=%.6f, yres=%.6f). Set pixel_size or adjust dimyx.",
+                   rs[1], rs[2]))
+    invisible(TRUE)
+  }
+
+  # ---- Normalize inputs to sf lists ----------------------------------------
 
   spp_list <- as_sf_list(x, group = group_x, label_prefix = "sp")
   str_list <- as_sf_list(y, group = group_y, label_prefix = "stressor")
 
-  # Choose or build area of interst
+  # ---- Choose or build AOI --------------------------------------------------
+
   if (is.null(area)) {
     if (!quiet) message("No area provided; creating AOI from ", area_strategy, " layers (", area_type, ").")
     src <- switch(area_strategy,
                   "stressor" = merge_shp(str_list),
-                  "species" = merge_shp(spp_list),
-                  "union" = merge_shp(c(spp_list, str_list)))
+                  "species"  = merge_shp(spp_list),
+                  "union"    = merge_shp(c(spp_list, str_list)))
     area <- create_area(src, area_type = area_type, buffer_frac = area_buffer_frac, quiet = quiet)
   } else if (inherits(area, "bbox")) {
     area <- sf::st_as_sfc(area)
-  } else if (inherits(area, "data.frame")) {
+  } else if (is.data.frame(area)) {
     area <- df_to_shp(area)
   } else if (!inherits(area, "sf")) {
     stop("`area` must be NULL, bbox, data.frame, or sf.")
   }
 
-  # Kernels helper
+  # Ensure AOI has a CRS
+  if (is.na(sf::st_crs(area))) {
+    area <- sf::st_set_crs(area, guess_crs(area))
+  }
+
+  # If metric outputs are requested, ensure AOI is in a metric CRS
+  if (return_crs == "metric" && sf::st_is_longlat(area)) {
+    area_metric <- transform_to_metric(area)  # package helper: choose UTM/Polar
+  } else {
+    area_metric <- area
+  }
+
+  # ---- Auto-derive a square pixel_size (meters) if needed -------------------
+
+  if (return_crs == "metric" && is.null(pixel_size)) {
+    bb <- sf::st_bbox(area_metric)
+    dx <- as.numeric(bb["xmax"] - bb["xmin"])
+    dy <- as.numeric(bb["ymax"] - bb["ymin"])
+    # Use the tighter dimension so cells are square and do not exceed requested dimyx
+    pixel_size <- min(dx / dimyx[2], dy / dimyx[1])
+    if (!quiet) message(sprintf("Auto pixel_size (square): %.3f m", pixel_size))
+  }
+
+  # ---- Kernels builder (passes pixel_size forward) --------------------------
+
   build_kernels <- function(lst, group_size = NULL, ncls = n_classes) {
     lapply(lst, function(item) {
       get_class_kernel(
         item,
-        area = area,
+        area = if (return_crs == "metric") area_metric else area,
         n_classes = ncls,
         output_layer_type = "both",
         radius = radius,
         radius_method = radius_method,
         group_size = group_size,
-        pixel_size = pixel_size,
+        pixel_size = pixel_size,     # <-- key: guarantees square cells if set
         dimyx = dimyx,
         exclude_lowest = exclude_lowest,
         lowest_prop = lowest_prop,
@@ -175,17 +181,20 @@ risa_prep <- function(
   }
 
   # Distributions (presence maps): 1 class; Kernels: n_classes
-  spp_distribution_list <- build_kernels(spp_list, group_size = group_size_x, ncls = 1L)
-  str_distribution_list <- build_kernels(str_list, group_size = group_size_y, ncls = 1L)
-  spp_kernel_list <- build_kernels(spp_list, group_size = group_size_x, ncls = n_classes)
-  stressor_kernel_list <- build_kernels(str_list, group_size = group_size_y, ncls = n_classes)
+  spp_distribution_list  <- build_kernels(spp_list, group_size = group_size_x, ncls = 1L)
+  str_distribution_list  <- build_kernels(str_list, group_size = group_size_y, ncls = 1L)
+  spp_kernel_list        <- build_kernels(spp_list, group_size = group_size_x, ncls = n_classes)
+  stressor_kernel_list   <- build_kernels(str_list, group_size = group_size_y, ncls = n_classes)
 
-  # AOI CRS according to return_crs
+  # AOI CRS for output (only transform AOI geometry for return)
   if (return_crs == "4326") {
-    area <- sf::st_transform(area, 4326)
+    area_out <- sf::st_transform(area, 4326)
+  } else {
+    area_out <- area_metric
   }
 
-  # Overlap maps
+  # ---- Overlap maps ---------------------------------------------------------
+
   if (!quiet) message("Generating overlap maps...")
   overlap_maps_list <- lapply(spp_kernel_list, function(sp) {
     lapply(stressor_kernel_list, function(st) {
@@ -210,14 +219,34 @@ risa_prep <- function(
     })
   })
 
-  # Assemble
+  # ---- Guard rails for metric outputs (square + meter grid) -----------------
+
+  if (return_crs == "metric") {
+    # distribution rasters
+    for (nm in names(spp_distribution_list))  .check_square_metric(spp_distribution_list[[nm]]$raster)
+    for (nm in names(str_distribution_list))  .check_square_metric(str_distribution_list[[nm]]$raster)
+    # kernel rasters
+    for (nm in names(spp_kernel_list))        .check_square_metric(spp_kernel_list[[nm]]$raster)
+    for (nm in names(stressor_kernel_list))   .check_square_metric(stressor_kernel_list[[nm]]$raster)
+    # overlap rasters
+    for (i in names(overlap_maps_list)) {
+      for (j in names(overlap_maps_list[[i]])) {
+        ol <- overlap_maps_list[[i]][[j]]
+        if (inherits(ol, "SpatRaster")) .check_square_metric(ol)
+        if (is.list(ol) && "raster" %in% names(ol)) .check_square_metric(ol$raster)
+      }
+    }
+  }
+
+  # ---- Assemble -------------------------------------------------------------
+
   out <- list(
     species_distributions = spp_distribution_list,
     stressor_distributions = str_distribution_list,
-    species_kernel_maps = spp_kernel_list,
-    stressor_kernel_maps = stressor_kernel_list,
-    overlap_maps = overlap_maps_list,
-    area_of_interest = area
+    species_kernel_maps    = spp_kernel_list,
+    stressor_kernel_maps   = stressor_kernel_list,
+    overlap_maps           = overlap_maps_list,
+    area_of_interest       = area_out
   )
   class(out) <- c("risaMaps", class(out))
   out

@@ -2,22 +2,23 @@
 % Please edit documentation in R/input_tools.R
 \name{merge_shp}
 \alias{merge_shp}
-\title{Merge a list of 'sf' objects into a data frame of coordinates}
+\title{Merge a list of sf layers}
 \usage{
-merge_shp(shp_list, group_size = NULL)
+merge_shp(shp_list, group_size = NULL, return = c("sf_union", "points"))
 }
 \arguments{
-\item{shp_list}{A list of `sf` objects.}
+\item{shp_list}{list of sf objects}
 
-\item{group_size}{Optional name of a column in each `sf` to repeat per vertex and include in the output.}
+\item{group_size}{optional column name to carry into points mode (old behavior)}
+
+\item{return}{one of c("sf_union","points") — default "sf_union" for risa_prep()}
 }
 \value{
-A data.frame with columns `X`, `Y`, `group`, and optionally `group_size`.
+if return = "sf_union": an sf with dissolved geometry (union of inputs)
+        if return = "points":   a data.frame of XY (old behavior)
 }
 \description{
-Combines multiple vector objects of class `sf` into a single data frame with X, Y, and group labels.
-Coordinates are the vertices of each geometry (POINT/LINESTRING/POLYGON/MULTI*).
-For polygons, ring-closing vertices are included as returned by `sf::st_coordinates()`.
+Merge a list of sf layers
 }
 \examples{
 # Create test data

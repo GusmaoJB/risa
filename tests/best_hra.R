@@ -158,11 +158,11 @@ hra4 <- function(
         sqrt(E_opp^2 + C_opp^2) * general_decay
       }
 
-      # For exponential decay functions, rounding down values below 0.00005 to zero
+      # For exponential decay functions, rounding down values below 0.0001 to zero
       # as it might overestimate the classification of low risk areas since the
       # algorithm will classify any positive number into low risk, even if it is
       #
-      risk_raw <- terra::ifel(risk_raw < 5e-5, 0, risk_raw)
+      risk_raw <- terra::ifel(risk_raw < 1e-4, 0, risk_raw)
       risk_raw <- terra::cover(risk_raw, sp_distr_zeros)
       risk_cls <- terra::ifel(
         risk_raw == 0, 0,
@@ -179,6 +179,8 @@ hra4 <- function(
     }
 
     total_raw <- Reduce(`+`, lapply(res, function(x) x$Risk_map_raw))
+    risk_reclass_stack <- terra::rast(lapply(res, function(x) x$Risk_map))
+    risk_reclas_max <- terra::app(risk_reclass_stack, max, na.rm = TRUE)
     total_cls <- terra::ifel(
       total_raw == 0, 0,
       terra::ifel(total_raw < (1/3)*m_jkl*n_overlap, 1,
@@ -187,6 +189,7 @@ hra4 <- function(
 
     res$total_raw     <- total_raw
     res$total         <- total_cls
+    res$reclass_risk <- risk_reclas_max
     res$summary_stats <- compute_summary_stats_single(res, total_raw, total_cls)
 
     if (isTRUE(output_decimal_crs)) {
@@ -234,6 +237,7 @@ hra4 <- function(
   if (any(!vapply(sd, inherits, logical(1), "SpatRaster"))) {
     stop("All 'species_distr' entries must be or contain a SpatRaster.")
   }
+
   template <- sd[[1]]
 
   # Infer n_overlap from union of stressors

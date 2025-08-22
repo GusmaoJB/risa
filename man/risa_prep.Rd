@@ -77,5 +77,5 @@ Generates kernel density maps for species and stressors, plus overlap maps,
 within an area of interest (auto or user-supplied).
 }
 \examples{
-# See previous examples in your docs
+# add example here
 }

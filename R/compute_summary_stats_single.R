@@ -8,20 +8,20 @@
 #' across all stressors.
 #'
 #' @param rr A named list of stressor results, where each element must contain
-#'   SpatRaster objects for \code{E_criteria}, \code{C_criteria},
-#'   \code{Risk_map_raw}, and \code{Risk_map}.
-#' @param total_risk_raw A \code{SpatRaster} with overall raw risk values
+#'   'SpatRaster' objects for 'E_criteria', 'C_criteria',
+#'   'Risk_map_raw', and 'Risk_map'.
+#' @param total_risk_raw A 'SpatRaster' with overall raw risk values
 #'   aggregated across stressors.
-#' @param total_class A \code{SpatRaster} with overall classified risk values
+#' @param total_class A 'SpatRaster' with overall classified risk values
 #'   (0 = None, 1 = Low, 2 = Medium, 3 = High).
-#' @return A \code{data.frame} with one row per stressor and an additional row
+#' @return A 'data.frame' with one row per stressor and an additional row
 #'   with the overall statistics. The columns include:
 #'   \itemize{
-#'     \item \code{STRESSOR}: Stressor name.
-#'     \item \code{E_min}, \code{E_max}, \code{E_mean}: Exposure statistics.
-#'     \item \code{C_min}, \code{C_max}, \code{C_mean}: Consequence statistics.
-#'     \item \code{R_min}, \code{R_max}, \code{R_mean}: Raw risk statistics.
-#'     \item \code{R%high}, \code{R%medium}, \code{R%low}, \code{R%None}:
+#'     \item 'STRESSOR': Stressor name.
+#'     \item 'E_min, 'E_max', 'E_mean': Exposure statistics.
+#'     \item 'C_min, 'C_max', 'C_mean': Consequence statistics.
+#'     \item 'R_min, 'R_max', 'R_mean': Raw risk statistics.
+#'     \item 'R%high, 'R%medium', 'R%low', 'R%None':
 #'           Percentages of cells in each risk class.
 #'   }
 #' @details

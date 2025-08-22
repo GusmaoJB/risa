@@ -13,8 +13,9 @@ str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
 risa_maps <- risa_prep(spp_df, str_df)
 # export to compare with invest
 # export_maps(risa_maps, "C:/Users/gusma/Documents/research/test_hra/maps")
-
+getwd()
 #Load example data
+#path <- "C:/Users/gusma/Documents/research/test_hra/1sp_2stressors.csv"
 path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
 df <- read.csv(path)
 #Reshape criteria table
@@ -46,7 +47,23 @@ spp_dist <- list(species1 = risa_maps$species_distributions$species1$raster,
 
 # single value for all stressors, linear decay within 10 km
 res <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]],
-          equation = "euclidean")
+          equation = "multiplicative", #decay="exponential",
+          r_max = 3, n_overlap = 2)#,
+          #buffer_m = c(stressor1 = 500000, stressor2 = 1000000))
+res$stressor1$Risk_map_raw
+terra::plot(res$stressor1$Risk_map)
+terra::plot(res$stressor2$Risk_map)
+terra::plot(res$total)
+
+plot1 <- terra::mosaic(res$stressor1$Risk_map,
+              res$stressor2$Risk_map, fun=max)
+
+terra::plot(plot1)
+
+
+
+
+
 
 # per-stressor buffers (named)
 res3 <- hra4(rast_list, spp_dist, crit_list,
@@ -99,3 +116,20 @@ general_decay <- 1
 
 general_decay != 1
 is.integer(general_decay)
+
+
+
+buffer_m <- c(stressor1 = 500000, stressor2 = 1000000)
+
+# What attributes do your criteria expect?
+sort(unique(trimws(crit_list[[1]]$ATTRIBUTES)))
+
+# What does your container actually provide for a given stressor?
+names(rast_list[[1]]$stressor1)             # if it's a list of rasters, names()
+names(rast_list[[1]][["stressor1"]])        # idem
+names(rast_list[[1]][["stressor1"]])        # if SpatRaster stack, layer names
+
+# Do buffer names match stressor names exactly?
+names(buffer_m); names(rast_list[[1]])
+
+

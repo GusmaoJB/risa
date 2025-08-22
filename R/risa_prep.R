@@ -60,7 +60,6 @@ risa_prep <- function(
   overlap_method <- match.arg(overlap_method)
 
   # Helpers
-
   # Fail-fast guards for metric, square outputs
   .check_square_metric <- function(r) {
     if (!inherits(r, "SpatRaster")) return(invisible(TRUE))

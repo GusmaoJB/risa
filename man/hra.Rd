@@ -11,45 +11,97 @@ hra(
   equation = c("euclidean", "multiplicative"),
   r_max = 3,
   n_overlap = NULL,
-  output_decimal_crs = FALSE
+  output_decimal_crs = FALSE,
+  decay = c("none", "linear", "exponential", "polynomial_2nd", "polynomial_3rd",
+    "complementary_decay_2nd", "complementary_decay_3rd"),
+  buffer_m = NULL
 )
 }
 \arguments{
-\item{raster_list}{list}
+\item{raster_list}{A named list of rasters. In single-species mode (depth 2),
+it must be \code{list(stressor -> list(attribute -> SpatRaster))}. In ecosystem
+mode (depth 3), it must be \code{list(species -> list(stressor -> list(attribute -> SpatRaster)))}.}
 
-\item{species_distr}{SpatRaster (single) OR named list of SpatRasters (ecosystem).
-If an element is a list, the first SpatRaster within it will be used.}
+\item{species_distr}{A \code{SpatRaster} (single-species) OR a named list of
+\code{SpatRaster} objects (ecosystem). If an element is a list, the first
+\code{SpatRaster} within it will be used.}
 
-\item{criteria}{data.frame (single) OR named list of data.frames (ecosystem).}
+\item{criteria}{A \code{data.frame} (single) OR named list of \code{data.frame}s
+(ecosystem) with columns \code{STRESSOR}, \code{ATTRIBUTES}, \code{RATING},
+\code{DQ}, \code{WEIGHT}, and \code{E/C}.}
 
-\item{equation}{c("euclidean","multiplicative")}
+\item{equation}{\code{c("euclidean","multiplicative")}. Selects the InVEST risk
+equation used to combine E and C.}
 
-\item{r_max}{integer in 1..10}
+\item{r_max}{Integer in \code{1..10}; maximum score used by the chosen equation.}
 
-\item{n_overlap}{optional number of stressors (default inferred)}
+\item{n_overlap}{Optional integer: number of stressors assumed to overlap for
+classification scaling. By default it is inferred from the criteria.}
 
-\item{output_decimal_crs}{logical; reproject outputs to EPSG:4326 if TRUE}
+\item{output_decimal_crs}{Logical; if \code{TRUE}, reprojects outputs to EPSG:4326.}
+
+\item{decay}{\code{c("none","linear","exponential","polynomial_2nd","polynomial_3rd",
+"complementary_decay_2nd","complementary_decay_3rd")}. See \emph{Decay functions}
+above. Only the first three are provided by InVEST; the others are extensions.}
+
+\item{buffer_m}{Named numeric vector giving the buffer distance (meters) for each
+stressor (e.g., \code{c(stressor1 = 500000, stressor2 = 1000000)}). Required
+when \code{decay != "none"} for any stressor you wish to decay.}
 }
 \value{
-"risaHRA" list with per-stressor maps, totals, and summary_stats
+An object of class \code{"risaHRA"}: a named list that, for each stressor,
+  contains \code{E_criteria}, \code{C_criteria}, \code{Risk_map_raw}, and
+  \code{Risk_map}; plus \code{total_raw}, \code{total}, and \code{summary_stats}
+  in single-species mode. In ecosystem mode, per-species results are returned,
+  along with \code{ecosys_risk_raw}, \code{ecosys_risk_classified}, and a
+  combined \code{summary_stats} table.
 }
 \description{
 Implements the Natural Capital Project’s InVEST Habitat Risk Assessment (HRA;
 Sharp et al., 2016) model to estimate spatial risk from multiple stressors to
 a species/habitat (single-species mode) or across multiple species (ecosystem
-mode). The model estimates are based on Arkema et al. (2014), in which, for
-each stressor, the function combines Exposure (E) and Consequence (C) criteria—
-mixing mapped rasters and constant scores—using either the Euclidean or
-Multiplicative InVEST risk equations. Inputs can be nested lists of rasters
-(stressor → attributes; or species → stressor → attributes) plus a species
-distribution raster (or list) and a criteria table (or list). Rasters are
-auto-aligned to the species grid; outputs include per-stressor E/C maps,
-raw and classed risk maps, ecosystem risk (when applicable), and a
-`summary_stats` data frame. Optional reprojection to EPSG:4326 is supported.
+mode). For each stressor, the function combines Exposure (E) and Consequence (C)
+criteria—mixing mapped rasters and constant scores—using either the Euclidean
+or Multiplicative InVEST risk equations (Arkema et al., 2014). Inputs can be
+nested lists of rasters (stressor → attributes; or species → stressor → attributes),
+a species distribution raster (or list), and a criteria table (or list). Rasters
+are auto-aligned to the species grid; outputs include per-stressor E/C maps,
+raw and classed risk maps, ecosystem risk (when applicable), and a `summary_stats`
+data frame. Optional reprojection to EPSG:4326 is supported.
 }
-\examples{
-# example code
+\details{
+Rasters are aligned to the species grid using nearest-neighbor for categorical
+data and bilinear interpolation for continuous data. When a decay is used and
+a buffer is supplied for a given stressor, E and C rasters are attenuated by
+the chosen \eqn{f(d)} and an additional "general" decay is applied to overall
+stressor occurrence. Cells outside species presence are masked.
+}
+\section{Decay functions}{
 
+A distance-based decay can be applied to E and C maps (and a general stressor
+occurrence decay) when a named buffer (in meters) is supplied for each stressor.
+Let \eqn{d} be the distance (in meters) from a cell to the nearest mapped
+stressor presence, \eqn{B} the buffer distance for that stressor, and
+\eqn{I(d \le B)} an indicator for being within the buffer. The implemented
+options are:
+
+\itemize{
+  \item \code{"none"} (InVEST): \deqn{f(d) = I(d \le B)}
+  \item \code{"linear"} (InVEST): \deqn{f(d) = I(d \le B)\,\left(1 - \frac{d}{B}\right)}
+  \item \code{"exponential"} (InVEST): \deqn{f(d) = I(d \le B)\,e^{-k d},\quad k = -\frac{\ln(10^{-6})}{B}}
+  \item \code{"polynomial_2nd"} (extension): \deqn{f(d) = I(d \le B)\,\left(1 - \frac{d}{B}\right)^{2}}
+  \item \code{"polynomial_3rd"} (extension): \deqn{f(d) = I(d \le B)\,\left(1 - \frac{d}{B}\right)^{3}}
+  \item \code{"complementary_decay_2nd"} (extension): \deqn{f(d) = I(d \le B)\,\left(1 - \left(\frac{d}{B}\right)^{2}\right)}
+  \item \code{"complementary_decay_3rd"} (extension): \deqn{f(d) = I(d \le B)\,\left(1 - \left(\frac{d}{B}\right)^{3}\right)}
+}
+
+\strong{Note:} Only the first three options (\code{"none"}, \code{"linear"},
+and \code{"exponential"}) are present in InVEST’s reference implementation.
+The polynomial and complementary variants are smooth extensions that allow
+faster-than-linear attenuation while remaining bounded in \eqn{[0,1]} on \eqn{[0,B]}.
+}
+
+\examples{
 # Creating test data
 set.seed(12)
 spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
@@ -112,7 +164,4 @@ Sharp R, Tallis H, Ricketts T, Guerry A, Wood SA, Chaplin-Kramer R, et al. (2016
 InVEST [Internet]. The Natural Capital Project, Stanford University, University of
 Minnesota, The Nature Conservancy, and World Wildlife Fund. Available at
 \url{http://www.naturalcapitalproject.org/software/}.
-
-Chung MG, Kang H, Choi S-U. (2015) Assessment of Coastal Ecosystem Services for
-Conservation Strategies in South Korea. \emph{PLOS ONE} 10:e0133856. PMID: 26221950.
 }

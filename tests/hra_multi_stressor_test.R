@@ -1,4 +1,5 @@
 ############### Test Field ###############
+
 # Creating test data
 set.seed(12)
 spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
@@ -45,32 +46,35 @@ rast_list <- list(
 spp_dist <- list(species1 = risa_maps$species_distributions$species1$raster,
                  species2 = risa_maps$species_distributions$species2$raster)
 
+
+
 # single value for all stressors, linear decay within 10 km
 res <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]],
-          equation = "multiplicative", #decay="exponential",
-          r_max = 3, n_overlap = 2)#,
-          #buffer_m = c(stressor1 = 500000, stressor2 = 1000000))
-res$stressor1$Risk_map_raw
+          equation = "multiplicative",
+          r_max = 3, n_overlap = 2)
+
 terra::plot(res$stressor1$Risk_map)
 terra::plot(res$stressor2$Risk_map)
+terra::plot(res$total_raw)
 terra::plot(res$total)
-
-plot1 <- terra::mosaic(res$stressor1$Risk_map,
-              res$stressor2$Risk_map, fun=max)
-
-terra::plot(plot1)
-
-
-
-
 
 
 # per-stressor buffers (named)
-res3 <- hra4(rast_list, spp_dist, crit_list,
+res4 <- hra7(rast_list, spp_dist, crit_list,
              equation = "multiplicative",
-             decay = "exponential",
+             decay = "linear",
              r_max = 3, n_overlap = 2,
              buffer_m = c(stressor1 = 500000, stressor2 = 1000000))
+
+terra::plot(res4$species1$stressor1$Risk_map)
+terra::plot(res4$species1$stressor2$Risk_map)
+terra::plot(res4$species1$total)
+terra::plot(res4$species2$total)
+
+terra::plot(res4$ecosys_risk_classified)
+
+res3$summary_stats
+
 
 terra::plot(rast_list$species1$stressor1$intensity)
 terra::plot(res3$species1$stressor1$Risk_map_raw)

@@ -3,15 +3,38 @@
 #' Implements the Natural Capital Project’s InVEST Habitat Risk Assessment (HRA;
 #' Sharp et al., 2016) model to estimate spatial risk from multiple stressors to
 #' a species/habitat (single-species mode) or across multiple species (ecosystem
-#' mode). The model estimates are based on Arkema et al. (2014), in which, for
-#' each stressor, the function combines Exposure (E) and Consequence (C) criteria—
-#' mixing mapped rasters and constant scores—using either the Euclidean or
-#' Multiplicative InVEST risk equations. Inputs can be nested lists of rasters
-#' (stressor → attributes; or species → stressor → attributes) plus a species
-#' distribution raster (or list) and a criteria table (or list). Rasters are
-#' auto-aligned to the species grid; outputs include per-stressor E/C maps,
-#' raw and classed risk maps, ecosystem risk (when applicable), and a
-#' `summary_stats` data frame. Optional reprojection to EPSG:4326 is supported.
+#' mode). For each stressor, the function combines Exposure (E) and Consequence (C)
+#' criteria—mixing mapped rasters and constant scores—using either the Euclidean
+#' or Multiplicative InVEST risk equations (Arkema et al., 2014). Inputs can be
+#' nested lists of rasters (stressor → attributes; or species → stressor → attributes),
+#' a species distribution raster (or list), and a criteria table (or list). Rasters
+#' are auto-aligned to the species grid; outputs include per-stressor E/C maps,
+#' raw and classed risk maps, ecosystem risk (when applicable), and a `summary_stats`
+#' data frame. Optional reprojection to EPSG:4326 is supported.
+#'
+#' @section Decay functions:
+#' A distance-based decay can be applied to E and C maps (and a general stressor
+#' occurrence decay) when a named buffer (in meters) is supplied for each stressor.
+#' Let \eqn{d} be the distance (in meters) from a cell to the nearest mapped
+#' stressor presence, \eqn{B} the buffer distance for that stressor, and
+#' \eqn{I(d \le B)} an indicator for being within the buffer. The implemented
+#' options are:
+#'
+#' \itemize{
+#'   \item \code{"none"} (InVEST): \deqn{f(d) = I(d \le B)}
+#'   \item \code{"linear"} (InVEST): \deqn{f(d) = I(d \le B)\,\left(1 - \frac{d}{B}\right)}
+#'   \item \code{"exponential"} (InVEST): \deqn{f(d) = I(d \le B)\,e^{-k d},\quad k = -\frac{\ln(10^{-6})}{B}}
+#'   \item \code{"polynomial_2nd"} (extension): \deqn{f(d) = I(d \le B)\,\left(1 - \frac{d}{B}\right)^{2}}
+#'   \item \code{"polynomial_3rd"} (extension): \deqn{f(d) = I(d \le B)\,\left(1 - \frac{d}{B}\right)^{3}}
+#'   \item \code{"complementary_decay_2nd"} (extension): \deqn{f(d) = I(d \le B)\,\left(1 - \left(\frac{d}{B}\right)^{2}\right)}
+#'   \item \code{"complementary_decay_3rd"} (extension): \deqn{f(d) = I(d \le B)\,\left(1 - \left(\frac{d}{B}\right)^{3}\right)}
+#' }
+#'
+#' \strong{Note:} Only the first three options (\code{"none"}, \code{"linear"},
+#' and \code{"exponential"}) are present in InVEST’s reference implementation.
+#' The polynomial and complementary variants are smooth extensions that allow
+#' faster-than-linear attenuation while remaining bounded in \eqn{[0,1]} on \eqn{[0,B]}.
+#'
 #' @references
 #' Arkema KK, Verutes G, Bernhardt JR, Clarke C, Rosado S, Canto M, et al. (2014)
 #' Assessing habitat risk from human activities to inform coastal and marine spatial
@@ -22,21 +45,45 @@
 #' Minnesota, The Nature Conservancy, and World Wildlife Fund. Available at
 #' \url{http://www.naturalcapitalproject.org/software/}.
 #'
-#' Chung MG, Kang H, Choi S-U. (2015) Assessment of Coastal Ecosystem Services for
-#' Conservation Strategies in South Korea. \emph{PLOS ONE} 10:e0133856. PMID: 26221950.
-#' @param raster_list list
-#' @param species_distr SpatRaster (single) OR named list of SpatRasters (ecosystem).
-#'        If an element is a list, the first SpatRaster within it will be used.
-#' @param criteria data.frame (single) OR named list of data.frames (ecosystem).
-#' @param equation c("euclidean","multiplicative")
-#' @param r_max integer in 1..10
-#' @param n_overlap optional number of stressors (default inferred)
-#' @param output_decimal_crs logical; reproject outputs to EPSG:4326 if TRUE
-#' @return "risaHRA" list with per-stressor maps, totals, and summary_stats
-#' @importFrom terra compareGeom project mosaic mask ifel freq global
-#' @examples
-#' # example code
+#' @param raster_list A named list of rasters. In single-species mode (depth 2),
+#'   it must be \code{list(stressor -> list(attribute -> SpatRaster))}. In ecosystem
+#'   mode (depth 3), it must be \code{list(species -> list(stressor -> list(attribute -> SpatRaster)))}.
+#' @param species_distr A \code{SpatRaster} (single-species) OR a named list of
+#'   \code{SpatRaster} objects (ecosystem). If an element is a list, the first
+#'   \code{SpatRaster} within it will be used.
+#' @param criteria A \code{data.frame} (single) OR named list of \code{data.frame}s
+#'   (ecosystem) with columns \code{STRESSOR}, \code{ATTRIBUTES}, \code{RATING},
+#'   \code{DQ}, \code{WEIGHT}, and \code{E/C}.
+#' @param equation \code{c("euclidean","multiplicative")}. Selects the InVEST risk
+#'   equation used to combine E and C.
+#' @param r_max Integer in \code{1..10}; maximum score used by the chosen equation.
+#' @param n_overlap Optional integer: number of stressors assumed to overlap for
+#'   classification scaling. By default it is inferred from the criteria.
+#' @param output_decimal_crs Logical; if \code{TRUE}, reprojects outputs to EPSG:4326.
+#' @param decay \code{c("none","linear","exponential","polynomial_2nd","polynomial_3rd",
+#'   "complementary_decay_2nd","complementary_decay_3rd")}. See \emph{Decay functions}
+#'   above. Only the first three are provided by InVEST; the others are extensions.
+#' @param buffer_m Named numeric vector giving the buffer distance (meters) for each
+#'   stressor (e.g., \code{c(stressor1 = 500000, stressor2 = 1000000)}). Required
+#'   when \code{decay != "none"} for any stressor you wish to decay.
 #'
+#' @return An object of class \code{"risaHRA"}: a named list that, for each stressor,
+#'   contains \code{E_criteria}, \code{C_criteria}, \code{Risk_map_raw}, and
+#'   \code{Risk_map}; plus \code{total_raw}, \code{total}, and \code{summary_stats}
+#'   in single-species mode. In ecosystem mode, per-species results are returned,
+#'   along with \code{ecosys_risk_raw}, \code{ecosys_risk_classified}, and a
+#'   combined \code{summary_stats} table.
+#'
+#' @details
+#' Rasters are aligned to the species grid using nearest-neighbor for categorical
+#' data and bilinear interpolation for continuous data. When a decay is used and
+#' a buffer is supplied for a given stressor, E and C rasters are attenuated by
+#' the chosen \eqn{f(d)} and an additional "general" decay is applied to overall
+#' stressor occurrence. Cells outside species presence are masked.
+#'
+#' @importFrom terra compareGeom project mosaic mask ifel freq global app rast sprc cover
+#'
+#' @examples
 #' # Creating test data
 #' set.seed(12)
 #' spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
@@ -93,12 +140,19 @@
 hra <- function(
     raster_list, species_distr, criteria,
     equation = c("euclidean","multiplicative"),
-    r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE
-) {
+    r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE,
+    decay = c("none", "linear", "exponential",
+              "polynomial_2nd", "polynomial_3rd",
+              "complementary_decay_2nd", "complementary_decay_3rd"),
+    buffer_m = NULL) {
+
   depth <- list_depth_base(raster_list)
   equation <- match.arg(equation)
+  decay <- match.arg(decay)
+  m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
 
   # Helpers
+  # Check criteria input format
   .check_criteria <- function(df_or_list) {
     req <- c("STRESSOR","ATTRIBUTES","RATING","DQ","WEIGHT","E/C")
     if (is.data.frame(df_or_list)) {
@@ -115,6 +169,7 @@ hra <- function(
     } else stop("'criteria' must be a data.frame (single) or list (ecosystem).")
   }
 
+  # Align rasters
   .align_to <- function(src, template, categorical = TRUE) {
     if (terra::compareGeom(src, template, stopOnError = FALSE)) return(src)
     m <- if (categorical) "near" else "bilinear"
@@ -133,58 +188,10 @@ hra <- function(
     NULL
   }
 
-  .compute_summary_stats_single <- function(rr, total_risk_raw, total_class) {
-    stressor_names <- setdiff(names(rr), c("total_raw","total","summary_stats"))
-    rows <- lapply(stressor_names, function(st) {
-      E <- rr[[st]]$E_criteria
-      C <- rr[[st]]$C_criteria
-      Rr <- rr[[st]]$Risk_map_raw
-      Rc <- rr[[st]]$Risk_map
-      gE <- terra::global(E,  c("min","max","mean"), na.rm=TRUE)
-      gC <- terra::global(C,  c("min","max","mean"), na.rm=TRUE)
-      gR <- terra::global(Rr, c("min","max","mean"), na.rm=TRUE)
-
-      fq <- terra::freq(Rc)
-      cnt <- c(`0`=0,`1`=0,`2`=0,`3`=0)
-      if (!is.null(fq) && nrow(fq)) {
-        vv <- as.character(fq[, "value"]); cnt[vv] <- fq[, "count"]
-      }
-      tot <- sum(cnt)
-
-      data.frame(
-        STRESSOR = st,
-        E_min  = as.numeric(gE[1,"min"]), E_max = as.numeric(gE[1,"max"]), E_mean = as.numeric(gE[1,"mean"]),
-        C_min  = as.numeric(gC[1,"min"]), C_max = as.numeric(gC[1,"max"]), C_mean = as.numeric(gC[1,"mean"]),
-        R_min  = as.numeric(gR[1,"min"]), R_max = as.numeric(gR[1,"max"]), R_mean = as.numeric(gR[1,"mean"]),
-        `R%high`   = if (tot) 100*cnt["3"]/tot else NA_real_,
-        `R%medium` = if (tot) 100*cnt["2"]/tot else NA_real_,
-        `R%low`    = if (tot) 100*cnt["1"]/tot else NA_real_,
-        `R%None`   = if (tot) 100*cnt["0"]/tot else NA_real_
-      )
-    })
-    per <- do.call(rbind, rows)
-
-    fqt <- terra::freq(total_class)
-    cntt <- c(`0`=0,`1`=0,`2`=0,`3`=0)
-    if (!is.null(fqt) && nrow(fqt)) {
-      vv <- as.character(fqt[, "value"]); cntt[vv] <- fqt[, "count"]
-    }
-    tot <- sum(cntt)
-
-    overall <- data.frame(
-      STRESSOR="(FROM ALL STRESSORS)",
-      E_min=min(per$E_min,na.rm=TRUE), E_max=max(per$E_max,na.rm=TRUE), E_mean=mean(per$E_mean,na.rm=TRUE),
-      C_min=min(per$C_min,na.rm=TRUE), C_max=max(per$C_max,na.rm=TRUE), C_mean=mean(per$C_mean,na.rm=TRUE),
-      R_min=min(per$R_min,na.rm=TRUE), R_max=max(per$R_max,na.rm=TRUE), R_mean=mean(per$R_mean,na.rm=TRUE),
-      `R%high` = if (tot) 100*cntt["3"]/tot else NA_real_,
-      `R%medium` = if (tot) 100*cntt["2"]/tot else NA_real_,
-      `R%low` = if (tot) 100*cntt["1"]/tot else NA_real_,
-      `R%None` = if (tot) 100*cntt["0"]/tot else NA_real_
-    )
-    rbind(overall, per)
-  }
-
-  .single <- function(rlist, sp_distr, crit, equation, r_max, n_overlap, output_decimal_crs) {
+  # Calculates C and E scores, as well as risk estimates, for a single species
+  .single <- function(rlist, sp_distr, crit, equation,
+                      r_max, n_overlap, output_decimal_crs,
+                      decay, buffer_m) {
     if (list_depth_base(rlist) != 2L) stop("Single-species mode requires depth-2 raster_list.")
 
     # Accept list containers for sp_distr
@@ -205,12 +212,11 @@ hra <- function(
       stop("Names in 'raster_list' must be a subset of criteria STRESSOR values.")
     }
 
-    sp_presence    <- terra::ifel(!is.na(sp_distr), 1, NA)
+    sp_presence <- terra::ifel(!is.na(sp_distr), 1, NA)
     sp_distr_zeros <- terra::ifel(!is.na(sp_distr), 0, NA)
-    zero_r         <- sp_distr * 0
+    zero_r <- sp_distr * 0
 
     res <- setNames(vector("list", length(names(rlist))), names(rlist))
-    m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
 
     for (stressor in names(rlist)) {
       crit_stressor <- crit[is.na(crit$STRESSOR) | crit$STRESSOR %in% c("", "NA", stressor), , drop=FALSE]
@@ -226,8 +232,8 @@ hra <- function(
         stop("DQ/WEIGHT must be > 0 for stressor '", stressor, "'.")
       }
 
-      E_const  <- E_df[!is.na(E_df$RATING), , drop=FALSE]
-      C_const  <- C_df[!is.na(C_df$RATING), , drop=FALSE]
+      E_const <- E_df[!is.na(E_df$RATING), , drop=FALSE]
+      C_const <- C_df[!is.na(C_df$RATING), , drop=FALSE]
       E_mapped <- E_df[ is.na(E_df$RATING), , drop=FALSE]
       C_mapped <- C_df[ is.na(C_df$RATING), , drop=FALSE]
 
@@ -248,8 +254,8 @@ hra <- function(
 
       E_numer_const <- if (nrow(E_const)) sum(E_const$RATING / (E_const$DQ * E_const$WEIGHT)) else 0
       C_numer_const <- if (nrow(C_const)) sum(C_const$RATING / (C_const$DQ * C_const$WEIGHT)) else 0
-      E_numer_rast  <- sum_weighted(E_mapped)
-      C_numer_rast  <- sum_weighted(C_mapped)
+      E_numer_rast <- sum_weighted(E_mapped)
+      C_numer_rast <- sum_weighted(C_mapped)
 
       E_denom <- sum(1 / (E_df$DQ * E_df$WEIGHT))
       C_denom <- sum(1 / (C_df$DQ * C_df$WEIGHT))
@@ -257,15 +263,55 @@ hra <- function(
       E_score_raster <- (E_numer_const + E_numer_rast) / E_denom
       C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
 
-      E_map <- terra::mosaic(E_score_raster, sp_distr_zeros, fun="first")
-      C_map <- terra::mosaic(terra::mask(C_score_raster, sp_distr), sp_distr_zeros, fun="first")
+      E_dec_coef <- 1
+      C_dec_coef <- 1
+      general_decay <- 1
+
+      # Apply decay functions
+      if (decay %in% c("linear","exponential","polynomial_2nd","polynomial_3rd",
+                       "complementary_decay_2nd", "complementary_decay_3rd") &&
+          !is.null(buffer_m[stressor])) {
+        E_dec_coef <- decay_coeffs(E_score_raster, NULL, decay, buffer_m[stressor])
+        C_dec_coef <- decay_coeffs(C_score_raster, NULL, decay, buffer_m[stressor])
+
+        E_score_raster <- get_decay_map(E_score_raster, E_dec_coef, (E_numer_const / E_denom))
+        C_score_raster <- get_decay_map(C_score_raster, C_dec_coef, (C_numer_const / C_denom))
+
+        E_score_raster <- terra::ifel(E_score_raster < 1e-6, 0, E_score_raster)
+        C_score_raster <- terra::ifel(C_score_raster < 1e-6, 0, C_score_raster)
+
+        collection <- terra::sprc(rlist[[stressor]])
+        r_mos <- terra::mosaic(collection, fun=max)
+        stress_occ <- terra::ifel(is.na(r_mos), NA, 1)
+        general_decay <- decay_coeffs(stress_occ,
+                                      sp_presence,
+                                      decay = decay,
+                                      buffer_m[[stressor]])
+        general_decay <- terra::ifel(general_decay < 1e-6, 0, general_decay)
+      }
+
+      E_score_raster <- terra::mask(E_score_raster, sp_presence)
+      C_score_raster <- terra::mask(C_score_raster, sp_presence)
+
+      E_map <- terra::cover(E_score_raster, sp_distr_zeros)
+      C_map <- terra::cover(C_score_raster, sp_distr_zeros)
 
       risk_raw <- if (equation=="multiplicative") {
-        (C_score_raster * E_score_raster) * sp_presence
+        (C_score_raster) * (E_score_raster) * general_decay
       } else {
-        sqrt((E_score_raster - 1)^2 + (C_score_raster - 1)^2) * sp_presence
+        E_opp <- E_score_raster - 1
+        C_opp <- C_score_raster - 1
+
+        if (inherits(general_decay, 'SpatRaster')) {
+          E_opp <- terra::ifel(E_opp < 0, 0, E_opp)
+          C_opp <- terra::ifel(C_opp < 0, 0, C_opp)
+        }
+
+        sqrt(E_opp^2 + C_opp^2) * general_decay
       }
-      risk_raw <- terra::mosaic(risk_raw, sp_distr_zeros, fun="first")
+
+      risk_raw <- terra::cover(risk_raw, sp_distr_zeros)
+      risk_raw <- terra::ifel(risk_raw < 1e-3, 0, risk_raw)
       risk_cls <- terra::ifel(
         risk_raw == 0, 0,
         terra::ifel(risk_raw < (1/3)*m_jkl, 1,
@@ -280,16 +326,20 @@ hra <- function(
       )
     }
 
-    total_raw <- Reduce(`+`, lapply(res, function(x) x$Risk_map_raw))
-    total_cls <- terra::ifel(
+    list_raw <- lapply(res, function(x) x$Risk_map_raw)
+    stack_cls <- terra::rast(lapply(res, function(x) x$Risk_map))
+
+    total_raw <- Reduce(`+`, list_raw)
+    total_cls <- terra::app(stack_cls, fun = max, na.rm = TRUE)
+    total_hotspots_cls <- terra::ifel(
       total_raw == 0, 0,
       terra::ifel(total_raw < (1/3)*m_jkl*n_overlap, 1,
-                  terra::ifel(total_raw < (2/3)*m_jkl*n_overlap, 2, 3))
-    )
+                  terra::ifel(total_raw < (2/3)*m_jkl*n_overlap, 2, 3)))
 
-    res$total_raw     <- total_raw
-    res$total         <- total_cls
-    res$summary_stats <- .compute_summary_stats_single(res, total_raw, total_cls)
+    res$total_raw <- total_raw
+    res$total <- total_cls
+    res$total_hotspots_reclassified <- total_hotspots_cls
+    res$summary_stats <- compute_summary_stats_single(res, total_raw, total_hotspots_cls)
 
     if (isTRUE(output_decimal_crs)) {
       for (st in names(res)) if (is.list(res[[st]])) {
@@ -298,7 +348,8 @@ hra <- function(
         }
       }
       res$total_raw <- convert_to_decimal_degrees(total_raw)
-      res$total     <- convert_to_decimal_degrees(total_cls)
+      res$total <- convert_to_decimal_degrees(total_cls)
+      res$total_hotspots_reclassified <- convert_to_decimal_degrees(total_hotspots_cls)
     }
 
     class(res) <- c("risaHRA", class(res))
@@ -314,7 +365,9 @@ hra <- function(
       equation = equation,
       r_max = r_max,
       n_overlap = n_overlap,
-      output_decimal_crs = output_decimal_crs
+      output_decimal_crs = output_decimal_crs,
+      decay,
+      buffer_m
     ))
   }
 
@@ -334,6 +387,7 @@ hra <- function(
   if (any(!vapply(sd, inherits, logical(1), "SpatRaster"))) {
     stop("All 'species_distr' entries must be or contain a SpatRaster.")
   }
+
   template <- sd[[1]]
 
   # Infer n_overlap from union of stressors
@@ -347,38 +401,49 @@ hra <- function(
   # Run single HRA per species
   results <- lapply(species, function(sp) {
     .single(raster_list[[sp]], sd[[sp]], criteria[[sp]],
-            equation, r_max, n_overlap, FALSE)
+            equation, r_max, n_overlap, FALSE,
+            decay, buffer_m)
   })
   names(results) <- species
 
+  # Calculating ecosystem risk
   # Ecosystem presence mask on template grid (union of species)
   presences <- lapply(sd, function(d) terra::ifel(!is.na(.align_to(d, template, TRUE)), 1, 0))
-  sum_pres  <- Reduce(`+`, presences)
-  eco_mask  <- terra::ifel(sum_pres > 0, 1, NA)
+  sum_pres <- Reduce(`+`, presences)
+  eco_mask <- terra::ifel(sum_pres > 0, 1, NA)
 
-  # Ecosystem risk: average of species' total_raw, aligned to template
-  m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
-  eco_raw <- template * 0
-  for (sp in species) {
+  # Align per-species general risk (total_raw) to template (continuous)
+  rlist <- lapply(species, function(sp) {
     r <- results[[sp]]$total_raw
-    r <- .align_to(r, template, categorical = FALSE) # continuous
-    r <- terra::ifel(is.na(r), 0, r)
-    eco_raw <- eco_raw + r
-  }
-  eco_raw <- eco_raw / length(species)
-  eco_raw <- terra::mosaic(eco_raw, terra::ifel(!is.na(eco_mask), 0, NA), fun="first")
+    .align_to(r, template, categorical = FALSE)
+  })
+
+  # Make a multilayer SpatRaster
+  stk <- terra::rast(rlist)
+
+  # Per-cell sum of risks (ignore NA) and per-cell count of overlapping species
+  eco_sum <- terra::app(stk, sum, na.rm = TRUE)
+  eco_cnt <- terra::app(stk, function(v) sum(!is.na(v)))
+
+  # Average over overlapping species only (sum / count), keep NA where count==0
+  eco_raw <- terra::ifel(eco_cnt > 0, eco_sum / eco_cnt, NA)
+
+  # Ensure zeros inside the union mask
+  eco_raw <- terra::cover(eco_raw, terra::ifel(!is.na(eco_mask), 0, NA))
+
+  # Classify ecosystem risk using same n_overlap scaling
   eco_cls <- terra::ifel(
     eco_raw == 0, 0,
     terra::ifel(eco_raw < (1/3)*m_jkl*n_overlap, 1,
                 terra::ifel(eco_raw < (2/3)*m_jkl*n_overlap, 2, 3))
   )
 
-  # Summary table
+  # Summary table for ecosystem estimates
   per_species_stats <- do.call(rbind, lapply(names(results), function(sp) {
     cbind.data.frame(SPECIES = sp, results[[sp]]$summary_stats, row.names = NULL)
   }))
   gEco <- terra::global(eco_raw, c("min","max","mean"), na.rm=TRUE)
-  fqE  <- terra::freq(eco_cls)
+  fqE <- terra::freq(eco_cls)
   cntE <- c(`0`=0,`1`=0,`2`=0,`3`=0)
   if (!is.null(fqE) && nrow(fqE)) { vv <- as.character(fqE[, "value"]); cntE[vv] <- fqE[, "count"] }
   totE <- sum(cntE)
@@ -405,7 +470,7 @@ hra <- function(
         for (k in c("E_criteria","C_criteria","Risk_map_raw","Risk_map")) {
           out[[sp]][[nm]][[k]] <- convert_to_decimal_degrees(out[[sp]][[nm]][[k]])
         }
-      } else if (nm %in% c("total_raw","total")) {
+      } else if (nm %in% c("total_raw", "total", "total_hotspots_reclassified")) {
         out[[sp]][[nm]] <- convert_to_decimal_degrees(out[[sp]][[nm]])
       }
     }

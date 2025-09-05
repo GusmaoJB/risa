@@ -19,6 +19,3 @@ df <- read.csv(path)
 #Reshape criteria table
 crit_list <- criteria_reshape(df)
 
-
-hra_prep <- function(stressor_kernels, habitat_kernels, aio, resolution=NULL, )
-

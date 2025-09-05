@@ -21,6 +21,8 @@ path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
 df <- read.csv(path)
 #Reshape criteria table
 crit_list <- criteria_reshape(df)
+
+crit_list
 # Selecting spatially explicit criteria ratings
 # Note that the rasters in the stressors's list are named after the respective attribute in the criteria table.
 rast_list <- list(
@@ -66,10 +68,7 @@ res4 <- hra2(rast_list, spp_dist, crit_list,
              r_max = 3, n_overlap = 2,
              buffer_m = c(stressor1 = 500000, stressor2 = 1000000))
 
-terra::plot(pmax(res4$species1$stressor1$E_criteria - 1))
-
 terra::plot(res4$species1$stressor1$E_criteria)
-
 terra::plot(res4$species1$stressor1$C_criteria)
 
 terra::plot(res4$species1$stressor2$E_criteria)
@@ -82,6 +81,8 @@ terra::plot(res4$species1$stressor1$Risk_map_raw)
 terra::plot(res4$species1$stressor2$Risk_map_raw)
 
 terra::plot(res4$species1$total_raw)
+terra::plot(res4$species2$total_raw)
+
 terra::plot(res4$species1$total)
 terra::plot(res4$species2$total)
 

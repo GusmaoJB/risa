@@ -252,66 +252,72 @@ hra <- function(
         Reduce(`+`, parts)
       }
 
+      # Build numerators/denominators
       E_numer_const <- if (nrow(E_const)) sum(E_const$RATING / (E_const$DQ * E_const$WEIGHT)) else 0
       C_numer_const <- if (nrow(C_const)) sum(C_const$RATING / (C_const$DQ * C_const$WEIGHT)) else 0
-      E_numer_rast <- sum_weighted(E_mapped)
-      C_numer_rast <- sum_weighted(C_mapped)
-
+      E_numer_rast  <- sum_weighted(E_mapped)
+      C_numer_rast  <- sum_weighted(C_mapped)
       E_denom <- sum(1 / (E_df$DQ * E_df$WEIGHT))
       C_denom <- sum(1 / (C_df$DQ * C_df$WEIGHT))
 
-      E_score_raster <- (E_numer_const + E_numer_rast) / E_denom
-      C_score_raster <- (C_numer_const + C_numer_rast) / C_denom
+      # Union of this stressor’s attributes
+      collection <- terra::sprc(rlist[[stressor]])
+      r_mos <- terra::mosaic(collection, fun = max)
+      stress_occ <- terra::ifel(is.na(r_mos), NA, 1)
 
-      E_dec_coef <- 1
-      C_dec_coef <- 1
-      general_decay <- 1
+      dec_w <- NULL
+      E_dec_w <- NULL
+      C_dec_w <- NULL
 
-      # Apply decay functions
-      if (decay %in% c("linear","exponential","polynomial_2nd","polynomial_3rd",
-                       "complementary_decay_2nd", "complementary_decay_3rd") &&
+      if (decay %in% c("none","linear","exponential",
+                       "polynomial_2nd","polynomial_3rd",
+                       "complementary_decay_2nd","complementary_decay_3rd") &&
           !is.null(buffer_m[stressor])) {
-        E_dec_coef <- decay_coeffs(E_score_raster, NULL, decay, buffer_m[stressor])
-        C_dec_coef <- decay_coeffs(C_score_raster, NULL, decay, buffer_m[stressor])
+        # ensure alignment with species grid
+        stress_occ_aligned <- .align_to(stress_occ, sp_distr, categorical = TRUE)
+        dec_w <- make_stressor_decay(stress_occ = stress_occ_aligned,
+                                     buffer_m   = buffer_m[[stressor]],
+                                     decay      = decay,
+                                     habitat_mask = sp_presence)
+        E_dec_w <- dec_w * (E_numer_const / E_denom)
+        C_dec_w <- dec_w * (C_numer_const / C_denom)
+      }
 
-        E_score_raster <- get_decay_map(E_score_raster, E_dec_coef, (E_numer_const / E_denom))
-        C_score_raster <- get_decay_map(C_score_raster, C_dec_coef, (C_numer_const / C_denom))
+      # Combine constants + rasters into numerators (rasters)
+      E_num <- (E_numer_const + E_numer_rast)
+      C_num <- (C_numer_const + C_numer_rast)
 
-        E_score_raster <- terra::ifel(E_score_raster < 1e-6, 0, E_score_raster)
-        C_score_raster <- terra::ifel(C_score_raster < 1e-6, 0, C_score_raster)
+      # Final E and C rasters (restricted to habitat pixels)
+      E_score_raster <- (E_num / E_denom)
+      C_score_raster <- (C_num / C_denom)
 
-        collection <- terra::sprc(rlist[[stressor]])
-        r_mos <- terra::mosaic(collection, fun=max)
-        stress_occ <- terra::ifel(is.na(r_mos), NA, 1)
-        general_decay <- decay_coeffs(stress_occ,
-                                      sp_presence,
-                                      decay = decay,
-                                      buffer_m[[stressor]])
-        general_decay <- terra::ifel(general_decay < 1e-6, 0, general_decay)
+      # Apply decay weights and zeros outside buffer
+      if (inherits(dec_w, "SpatRaster")) {
+        E_score_raster <- terra::cover(E_score_raster, E_dec_w)
+        C_score_raster <- terra::cover(C_score_raster, C_dec_w)
       }
 
       E_score_raster <- terra::mask(E_score_raster, sp_presence)
       C_score_raster <- terra::mask(C_score_raster, sp_presence)
 
+      # Convenience maps with zeros inside presence
       E_map <- terra::cover(E_score_raster, sp_distr_zeros)
       C_map <- terra::cover(C_score_raster, sp_distr_zeros)
 
+      # Risk calculations
       risk_raw <- if (equation=="multiplicative") {
-        (C_score_raster) * (E_score_raster) * general_decay
+        C_score_raster * E_score_raster
       } else {
         E_opp <- E_score_raster - 1
         C_opp <- C_score_raster - 1
-
-        if (inherits(general_decay, 'SpatRaster')) {
-          E_opp <- terra::ifel(E_opp < 0, 0, E_opp)
-          C_opp <- terra::ifel(C_opp < 0, 0, C_opp)
-        }
-
-        sqrt(E_opp^2 + C_opp^2) * general_decay
+        E_opp <- terra::ifel(E_opp < 0, 0, E_opp)
+        C_opp <- terra::ifel(C_opp < 0, 0, C_opp)
+        sqrt(E_opp^2 + C_opp^2)
       }
 
       risk_raw <- terra::cover(risk_raw, sp_distr_zeros)
-      risk_raw <- terra::ifel(risk_raw < 1e-3, 0, risk_raw)
+      cut_off_decay <- 1e-6
+      risk_raw <- terra::ifel(risk_raw < cut_off_decay, 0, risk_raw)
       risk_cls <- terra::ifel(
         risk_raw == 0, 0,
         terra::ifel(risk_raw < (1/3)*m_jkl, 1,
@@ -326,6 +332,7 @@ hra <- function(
       )
     }
 
+    # Summaries for this species
     list_raw <- lapply(res, function(x) x$Risk_map_raw)
     stack_cls <- terra::rast(lapply(res, function(x) x$Risk_map))
 
@@ -334,7 +341,8 @@ hra <- function(
     total_hotspots_cls <- terra::ifel(
       total_raw == 0, 0,
       terra::ifel(total_raw < (1/3)*m_jkl*n_overlap, 1,
-                  terra::ifel(total_raw < (2/3)*m_jkl*n_overlap, 2, 3)))
+                  terra::ifel(total_raw < (2/3)*m_jkl*n_overlap, 2, 3))
+    )
 
     res$total_raw <- total_raw
     res$total <- total_cls
@@ -355,6 +363,7 @@ hra <- function(
     class(res) <- c("risaHRA", class(res))
     res
   }
+
 
   # Dispatch
   if (depth == 2L) {
@@ -431,7 +440,7 @@ hra <- function(
   # Ensure zeros inside the union mask
   eco_raw <- terra::cover(eco_raw, terra::ifel(!is.na(eco_mask), 0, NA))
 
-  # Classify ecosystem risk using same n_overlap scaling
+  # Classify ecosystem risk
   eco_cls <- terra::ifel(
     eco_raw == 0, 0,
     terra::ifel(eco_raw < (1/3)*m_jkl*n_overlap, 1,

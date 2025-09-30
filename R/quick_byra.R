@@ -61,11 +61,8 @@
 #' @param quiet Logical; if `TRUE` (default), suppresses console messages
 #'   from map preparation.
 #'
-#' @return An object of class `"risaHRA"` (see [`hra()`] for details),
-#'   with an added element:
-#'   \describe{
-#'     \item{`area_of_interest`}{The AOI polygon used for analysis.}
-#'   }
+#' @return An object of class "risaHRA" (see `hra()` for details),
+#'   with an added element: `area_of_interest` (The AOI polygon used for analysis).
 #'
 #' @details
 #' This function:
@@ -96,6 +93,7 @@
 #'            decay = "linear",
 #'            buffer_m = c(fishing = 5000))
 #' }
+#' @export
 quick_byra <- function(x, y,
                        criteria,
                        area = NULL,

@@ -12,15 +12,16 @@ str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
                            lat = rnorm(100, 0, 10), stressor = "stressor1"),
                 data.frame(long = rnorm(50, 0, 10),
                            lat = rnorm(100, 0, 5), stressor = "stressor2"))
-# Create kernel maps of species and stressor distributions and overlap maps
-risa_maps <- risa_prep(spp_df, str_df)
-# export to compare with invest
-# export_maps(risa_maps, "C:/Users/gusma/Documents/research/test_hra/maps")
 
 #Load example data
 #path <- "C:/Users/gusma/Documents/research/test_hra/1sp_2stressors.csv"
 path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
 df <- read.csv(path)
+
+# Create kernel maps of species and stressor distributions and overlap maps
+risa_maps <- risa_prep(spp_df, str_df)
+# export to compare with invest
+# export_maps(risa_maps, "C:/Users/gusma/Documents/research/test_hra/maps")
 
 # Selecting spatially explicit criteria ratings
 # Note that the rasters in the stressors's list are named after the respective attribute in the criteria table.
@@ -68,23 +69,7 @@ res4 <- hra2(rast_list, spp_dist, crit_list,
              buffer_m = c(stressor1 = 500000, stressor2 = 1000000))
 
 
-criteria <- criteria_reshape(df)
-sample_crit <- criteria[[1]]
-crit_names <- unique(sample_crit[is.na(sample_crit$RATING),"ATTRIBUTES"])
-
-input_mapr <- risa_prep(spp_df, str_df, output_layer_type = "raster")
-input_mapb <- risa_prep(spp_df, str_df, output_layer_type = "both")
-
-list_depth_base(input_mapr)
-list_depth_base(input_mapb)
-
-input_mapr$species_kernel_maps$species1$raster
-input_mapb$species_kernel_maps$species1$raster
-
-input_mapr$overlap_maps$species1$stressor1
-input_mapb$overlap_maps$species1$stressor1
-
-
+input_maps <- risa_prep(spp_df, str_df)
 
 raster_list <- reshape_risa_maps(input_maps, crit_names)
 species_distr <- input_maps$species_distributions
@@ -92,6 +77,8 @@ species_distr <- input_maps$species_distributions
 
 
 byra_test <- quick_byra(spp_df, str_df, df)
+?quick_byra()
+
 byra_test$summary_stats
 terra::plot(byra_test$ecosys_risk_raw)
 terra::plot(byra_test$ecosys_risk_classified)

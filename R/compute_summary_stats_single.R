@@ -28,7 +28,7 @@
 #' This function is primarily intended as an internal utility for summarizing
 #' outputs of the HRA workflow. It uses \code{terra::global()} to extract
 #' summary values and \code{terra::freq()} to tabulate class frequencies.
-#' @seealso \code{\link{hra4}} for running a full HRA analysis.
+#' @seealso \code{\link{hra}} for running a full HRA analysis.
 #' @examples
 #' \dontrun{
 #' # Suppose rr is a list of results from hra4()

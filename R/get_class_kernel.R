@@ -1,8 +1,42 @@
 #' Kernel density estimation and reclassification wrapper
 #'
-#' Computes a KDE for point data in a metric CRS, reclassifies values into
-#' `n_classes`, and returns a raster (`SpatRaster`), a vector (`sf` polygons),
-#' or both.
+#' Computes a Kernel Density Estimate (KDE) for point data in a metric CRS,
+#' reclassifies the continuous surface into `n_classes`, and returns a raster
+#' (`SpatRaster`), a vector (`sf` polygons), or both.
+#'
+#' - Kernel & estimator: Uses a Gaussian kernel via
+#'   `spatstat.explore::density.ppp()` to estimate a intensity surface
+#'    over a grid covering the study window with optional non-negative point weights.
+#'   The result is an intensity per unit area
+#'   in the projected units of the metric CRS.
+#'
+#' - Edge correction: `edge = TRUE` applies the standard
+#'   (Ripley/Diggle-style) edge correction implemented in `spatstat` to reduce boundary bias.
+#'
+#' - Bandwidth (`radius`) selection:
+#'   "nndist" (default): \eqn{\sigma = 1.5 \times \mathrm{median}(\text{NN}_i)},
+#'     i.e., 1.5 × the median nearest-neighbor distance among points inside
+#'     the window (finite NNs only); "ppl": profile pseudo-likelihood selector
+#'     `spatstat.explore::bw.ppl()`, which chooses \eqn{\sigma} by
+#'     maximizing a pseudo-likelihood score; "fixed": use the user-supplied numeric `radius` (in projected
+#'     units, e.g., meters).
+#'
+#' - Grid resolution: The evaluation grid is controlled by either
+#'   `pixel_size` (target cell size in meters; overrides `dimyx`) or
+#'   `dimyx = c(ny, nx)` (default `c(512, 512)`). Larger grids produce
+#'   smoother visuals but increase compute time and memory.
+#'
+#' - Weights: If `group_size` is given, those non-negative values are used
+#'   as point weights in the KDE. When omitted, all points have weight 1.
+#'
+#' - CRS handling: Input points and `area` are transformed to a metric CRS
+#'   (meters) before KDE. If `return_crs = "4326"`, outputs are reprojected to
+#'   WGS84. Rasters use nearest-neighbor reprojection to preserve class labels.
+#'
+#' - Reclassification: The continuous KDE raster is reclassified into `n_classes` using
+#' `reclass_matrix()` (see that helper for the exact binning strategy).
+#' Arguments `exclude_lowest` and `lowest_prop` allow collapsing the lower tail
+#' (e.g., background/noise) into the lowest class prior to class breaks.
 #'
 #' @param x An `sf` point layer or a data.frame/tibble with lon/lat in two columns.
 #' @param area Bounding region (`sf`, `bbox`, or data.frame) or `NULL` (auto bbox with buffer).
@@ -11,7 +45,7 @@
 #' @param radius KDE bandwidth (same units as projected coordinates). If `NULL`,
 #'   uses `radius_method`. Default `NULL`.
 #' @param radius_method One of `"nndist"` (median NN × 1.5), `"ppl"` (profile
-#'   likelihood via `spatstat.explore::bw.ppl`), or `"fixed"`. Default `"nndist"`.
+#'   pseudo-likelihood via `spatstat.explore::bw.ppl`), or `"fixed"`. Default `"nndist"`.
 #' @param group_size Optional column name in `x` to use as non-negative weights.
 #' @param pixel_size Optional target pixel size (meters). If `NULL`, uses `dimyx`.
 #' @param dimyx Optional `(ny, nx)` grid size for the KDE (default `c(512,512)`).
@@ -21,17 +55,42 @@
 #' @param return_crs One of `"metric"` (default; same CRS as used for KDE) or `"4326"`
 #'   to reproject outputs to WGS84. Rasters use nearest-neighbor to preserve classes.
 #' @param quiet Suppress messages. Default `TRUE`.
-#' @return `sf`, `SpatRaster`, or `list(raster=..., shp=...)` depending on `output_layer_type`.
+#'
+#' @return `sf`, `SpatRaster`, or `list(raster = ..., shp = ...)` depending on `output_layer_type`.
+#'
+#' @details
+#' Summary: Internally, the study window is `spatstat.geom::as.owin(area)` and points are
+#' converted to a `spatstat.geom::ppp` object. KDE is evaluated at `"pixels"`
+#' on the chosen grid and then converted to a `terra::rast`. The result is
+#' masked to `area`, reclassified into `n_classes`, and (optionally) converted
+#' to polygons with `terra::as.polygons(..., dissolve = TRUE)`.
+#'
+#' @section Units:
+#' Intensities are per unit area of the metric CRS.
+#' Bandwidth (`radius`) and `pixel_size` must be supplied in those same units.
+#'
+#' @seealso spatstat.explore::density.ppp(), spatstat.explore::bw.ppl(),
+#'   spatstat.geom::ppp(), terra::rast(), terra::classify(), terra::as.polygons().
+#'
+#' @references
+#' Baddeley, A., Rubak, E., & Turner, R. (2015). *Spatial Point Patterns:
+#' Methodology and Applications with R*. Chapman & Hall/CRC.
+#'
+#' Diggle, P. (1985). A kernel method for smoothing point process data.
+#' Applied Statistics, 34(2), 138–147.
+#'
 #' @importFrom sf st_as_sf st_as_sfc st_crs st_transform
 #' @importFrom spatstat.geom as.owin ppp nndist
 #' @importFrom spatstat.explore density.ppp bw.ppl
 #' @importFrom terra rast crs classify as.polygons mask vect project
+#' @importFrom stats median
+#'
 #' @examples
 #' # Creating test data
 #' df <- data.frame(long = rnorm(120, 0, 10), lat = rnorm(120, 0, 10))
 #'
-#' # Generating reclassified Kernel densities estimates (3 classes)
-#' kde <- get_class_kernel(df)
+#' # Generating reclassified Kernel density estimates (3 classes)
+#' kde <- get_class_kernel2(df)
 #'
 #' # Plot KDE map
 #' plot(kde)
@@ -55,7 +114,7 @@ get_class_kernel <- function(
   radius_method     <- match.arg(radius_method)
   return_crs        <- match.arg(return_crs)
 
-  # --- normalize input to sf ---------------------------------------------------
+  # Normalize input to sf
   if (inherits(x, "sf")) {
     x_sf <- x
   } else if (inherits(x, c("data.frame", "tbl_df", "tbl"))) {
@@ -68,7 +127,7 @@ get_class_kernel <- function(
     stop("`x` must be an sf object or a data.frame with lon/lat.")
   }
 
-  # --- area handling -----------------------------------------------------------
+  # Area handling
   if (is.null(area)) {
     if (!quiet) message("No area provided. Using buffered bounding box around observations...")
     area <- create_area(x_sf, area_type = "bbox", buffer_frac = 0.5, quiet = quiet)
@@ -80,7 +139,7 @@ get_class_kernel <- function(
     stop("`area` must be NULL, bbox, data.frame, or sf.")
   }
 
-  # --- project both to the same metric CRS ------------------------------------
+  # Project both to the same metric CRS
   area_m <- transform_to_metric(area, quiet = quiet)
   crs_m  <- sf::st_crs(area_m$shape)$epsg
   x_m    <- transform_to_metric(x_sf, metric_crs = crs_m, quiet = quiet)
@@ -90,7 +149,7 @@ get_class_kernel <- function(
     warning("Only one unique point; KDE will be a single peak. Consider setting `radius` explicitly.")
   }
 
-  # --- weights -----------------------------------------------------------------
+  # Weights
   weights <- NULL
   if (!is.null(group_size)) {
     if (!group_size %in% names(x_m$shape)) stop("`group_size` not found in `x`.")
@@ -99,7 +158,7 @@ get_class_kernel <- function(
     if (any(weights < 0, na.rm = TRUE)) stop("`group_size` weights must be non-negative.")
   }
 
-  # --- window & bandwidth ------------------------------------------------------
+  # Window & bandwidth (radius)
   W <- spatstat.geom::as.owin(area_m$shape)
   X <- spatstat.geom::ppp(x = coords[,1], y = coords[,2], window = W, check = FALSE)
 
@@ -120,7 +179,7 @@ get_class_kernel <- function(
     stop("`radius` must be a single positive number (in projected units).")
   }
 
-  # --- grid resolution ---------------------------------------------------------
+  # Grid resolution
   if (!is.null(pixel_size)) {
     if (!(is.numeric(pixel_size) && length(pixel_size) == 1L && pixel_size > 0)) {
       stop("`pixel_size` must be a single positive number (meters).")
@@ -135,7 +194,7 @@ get_class_kernel <- function(
     dimyx <- pmax(1L, as.integer(dimyx))
   }
 
-  # --- KDE ---------------------------------------------------------------------
+  # KDE
   kde <- spatstat.explore::density.ppp(
     X,
     sigma   = radius,
@@ -145,7 +204,7 @@ get_class_kernel <- function(
     edge    = TRUE
   )
 
-  # --- to SpatRaster, classify, mask ------------------------------------------
+  # Convert to SpatRaster, classify and mask to area
   r_kde <- terra::rast(kde)
   terra::crs(r_kde) <- sf::st_crs(area_m$shape)$wkt
 
@@ -156,16 +215,15 @@ get_class_kernel <- function(
   r_cls <- terra::mask(r_cls, terra::vect(area_m$shape))
   names(r_cls) <- "Rating"
 
-  # --- to polygons if needed ---------------------------------------------------
+  # Convert to polygons if needed
   if (output_layer_type != "raster") {
     v_cls <- sf::st_as_sf(terra::as.polygons(r_cls, dissolve = TRUE))
     v_cls <- sf::st_set_crs(v_cls, sf::st_crs(area_m$shape))
   }
 
-  # --- reproject outputs if requested -----------------------------------------
+  # Reproject outputs if requested
   if (return_crs == "4326") {
     if (output_layer_type %in% c("raster","both")) {
-      # nearest neighbor to preserve class labels
       r_cls <- terra::project(r_cls, "EPSG:4326", method = "near")
     }
     if (output_layer_type %in% c("shp","both")) {
@@ -173,12 +231,24 @@ get_class_kernel <- function(
     }
   }
 
-  # --- return ------------------------------------------------------------------
+  # Return KDE results with details as attributes
+  details <- list(
+    sigma   = radius,
+    method  = radius_method,
+    dimyx   = dimyx,
+    message = paste0("KDE estimated with sigma = ", radius,
+                     " using method = ", radius_method,
+                     " and grid = ", paste(dimyx, collapse = "x"))
+  )
   if (output_layer_type == "shp") {
+    attr(v_cls, "details") <- details
     return(v_cls)
   } else if (output_layer_type == "raster") {
+    attr(r_cls, "details") <- details
     return(r_cls)
   } else {
+    attr(v_cls, "details") <- details
+    attr(r_cls, "details") <- details
     return(list(raster = r_cls, shp = v_cls))
   }
 }

@@ -33,7 +33,7 @@ get_class_kernel(
 uses `radius_method`. Default `NULL`.}
 
 \item{radius_method}{One of `"nndist"` (median NN × 1.5), `"ppl"` (profile
-likelihood via `spatstat.explore::bw.ppl`), or `"fixed"`. Default `"nndist"`.}
+pseudo-likelihood via `spatstat.explore::bw.ppl`), or `"fixed"`. Default `"nndist"`.}
 
 \item{group_size}{Optional column name in `x` to use as non-negative weights.}
 
@@ -52,20 +52,79 @@ to reproject outputs to WGS84. Rasters use nearest-neighbor to preserve classes.
 \item{quiet}{Suppress messages. Default `TRUE`.}
 }
 \value{
-`sf`, `SpatRaster`, or `list(raster=..., shp=...)` depending on `output_layer_type`.
+`sf`, `SpatRaster`, or `list(raster = ..., shp = ...)` depending on `output_layer_type`.
 }
 \description{
-Computes a KDE for point data in a metric CRS, reclassifies values into
-`n_classes`, and returns a raster (`SpatRaster`), a vector (`sf` polygons),
-or both.
+Computes a Kernel Density Estimate (KDE) for point data in a metric CRS,
+reclassifies the continuous surface into `n_classes`, and returns a raster
+(`SpatRaster`), a vector (`sf` polygons), or both.
 }
+\details{
+- Kernel & estimator: Uses a Gaussian kernel via
+  `spatstat.explore::density.ppp()` to estimate a intensity surface
+   over a grid covering the study window with optional non-negative point weights.
+  The result is an intensity per unit area
+  in the projected units of the metric CRS.
+
+- Edge correction: `edge = TRUE` applies the standard
+  (Ripley/Diggle-style) edge correction implemented in `spatstat` to reduce boundary bias.
+
+- Bandwidth (`radius`) selection:
+  "nndist" (default): \eqn{\sigma = 1.5 \times \mathrm{median}(\text{NN}_i)},
+    i.e., 1.5 × the median nearest-neighbor distance among points inside
+    the window (finite NNs only); "ppl": profile pseudo-likelihood selector
+    `spatstat.explore::bw.ppl()`, which chooses \eqn{\sigma} by
+    maximizing a pseudo-likelihood score; "fixed": use the user-supplied numeric `radius` (in projected
+    units, e.g., meters).
+
+- Grid resolution: The evaluation grid is controlled by either
+  `pixel_size` (target cell size in meters; overrides `dimyx`) or
+  `dimyx = c(ny, nx)` (default `c(512, 512)`). Larger grids produce
+  smoother visuals but increase compute time and memory.
+
+- Weights: If `group_size` is given, those non-negative values are used
+  as point weights in the KDE. When omitted, all points have weight 1.
+
+- CRS handling: Input points and `area` are transformed to a metric CRS
+  (meters) before KDE. If `return_crs = "4326"`, outputs are reprojected to
+  WGS84. Rasters use nearest-neighbor reprojection to preserve class labels.
+
+- Reclassification: The continuous KDE raster is reclassified into `n_classes` using
+`reclass_matrix()` (see that helper for the exact binning strategy).
+Arguments `exclude_lowest` and `lowest_prop` allow collapsing the lower tail
+(e.g., background/noise) into the lowest class prior to class breaks.
+
+
+Summary: Internally, the study window is `spatstat.geom::as.owin(area)` and points are
+converted to a `spatstat.geom::ppp` object. KDE is evaluated at `"pixels"`
+on the chosen grid and then converted to a `terra::rast`. The result is
+masked to `area`, reclassified into `n_classes`, and (optionally) converted
+to polygons with `terra::as.polygons(..., dissolve = TRUE)`.
+}
+\section{Units}{
+
+Intensities are per unit area of the metric CRS.
+Bandwidth (`radius`) and `pixel_size` must be supplied in those same units.
+}
+
 \examples{
 # Creating test data
 df <- data.frame(long = rnorm(120, 0, 10), lat = rnorm(120, 0, 10))
 
-# Generating reclassified Kernel densities estimates (3 classes)
-kde <- get_class_kernel(df)
+# Generating reclassified Kernel density estimates (3 classes)
+kde <- get_class_kernel2(df)
 
 # Plot KDE map
 plot(kde)
+}
+\references{
+Baddeley, A., Rubak, E., & Turner, R. (2015). *Spatial Point Patterns:
+Methodology and Applications with R*. Chapman & Hall/CRC.
+
+Diggle, P. (1985). A kernel method for smoothing point process data.
+Applied Statistics, 34(2), 138–147.
+}
+\seealso{
+spatstat.explore::density.ppp(), spatstat.explore::bw.ppl(),
+  spatstat.geom::ppp(), terra::rast(), terra::classify(), terra::as.polygons().
 }

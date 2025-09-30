@@ -1,6 +1,6 @@
 
-# Multipanel plots 
+# Multipanel plots
 # For "risaMaps", "risaHRA", and "risaByRA"
-plot <- function(x, land_vector) {
+plot_hra <- function(x) {
   return("")
 }

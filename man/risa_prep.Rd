@@ -29,7 +29,7 @@ risa_prep(
 )
 }
 \arguments{
-\item{x}{Species input: `sf`, data.frame, or a list of `sf`. If a data.frame/sf,
+\item{x}{Species (Habitat) input: `sf`, data.frame, or a list of `sf`. If a data.frame/sf,
 you can split it by `group_x` into multiple species layers.}
 
 \item{y}{Stressor input: `sf`, data.frame, or a list of `sf`. If a data.frame/sf,
@@ -73,8 +73,8 @@ A list with: `species_distributions`, `stressor_distributions`,
   `species_kernel_maps`, `stressor_kernel_maps`, `overlap_maps`, and `area_of_interest`.
 }
 \description{
-Generates kernel density maps for species and stressors, plus overlap maps,
-within an area of interest (auto or user-supplied).
+Generates kernel density maps for species (habitats) and stressors, plus overlap maps,
+within a given area of interest (auto-generated from stressors' distributions or user-supplied).
 }
 \examples{
 # add example here

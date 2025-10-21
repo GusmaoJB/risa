@@ -17,6 +17,11 @@ str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
 #path <- "C:/Users/gusma/Documents/research/test_hra/1sp_2stressors.csv"
 path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
 df <- read.csv(path)
+crit_list <- criteria_reshape(df)
+
+# Risa prep
+input_maps <- risa_prep(spp_df, str_df)
+input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
 
 # Create kernel maps of species and stressor distributions and overlap maps
 risa_maps <- risa_prep(spp_df, str_df)
@@ -54,6 +59,10 @@ spp_dist <- list(species1 = risa_maps$species_distributions$species1$raster,
 res <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]],
           equation = "multiplicative",
           r_max = 3, n_overlap = 2)
+
+res
+
+
 res$total_hotspots_reclassified
 terra::plot(res$stressor1$Risk_map)
 terra::plot(res$stressor2$Risk_map)
@@ -62,14 +71,22 @@ terra::plot(res$total)
 
 
 # per-stressor buffers (named)
-res4 <- hra2(rast_list, spp_dist, crit_list,
+res4 <- hra(rast_list, spp_dist, crit_list,
              equation = "euclidean",
              decay = "linear",
              r_max = 3, n_overlap = 2,
              buffer_m = c(stressor1 = 500000, stressor2 = 1000000))
 
 
+
 input_maps <- risa_prep(spp_df, str_df)
+input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
+
+
+
+r_stack <- terra::rast(input_maps$species_distributions)
+
+input_maps$species_distributions$species1
 
 raster_list <- reshape_risa_maps(input_maps, crit_names)
 species_distr <- input_maps$species_distributions
@@ -77,32 +94,14 @@ species_distr <- input_maps$species_distributions
 
 
 byra_test <- quick_byra(spp_df, str_df, df)
-?quick_byra()
+"area_of_interest" %in% names(byra_test)
+
+terra::plot(byra_test$species1$stressor1$E_criteria)
+terra::plot(byra_test$species1$stressor1$C_criteria)
 
 byra_test$summary_stats
 terra::plot(byra_test$ecosys_risk_raw)
 terra::plot(byra_test$ecosys_risk_classified)
 
-byra_test$species1$stressor1
-
-# 1) What attribute names did HRA want?
-crit_names <- unique(sample_crit[is.na(sample_crit$RATING), "ATTRIBUTES"])
-crit_names <- trimws(as.character(crit_names))
-
-# 2) What layer names do we actually have from risa_prep?
-#    This tries to collect names from any SpatRaster inside input_maps (and sublists).
-get_layer_names <- function(x) {
-  out <- character()
-  if (inherits(x, "SpatRaster")) out <- names(x)
-  if (is.list(x)) out <- c(out, unlist(lapply(x, get_layer_names), use.names = FALSE))
-  unique(out)
-}
-available <- get_layer_names(input_maps)
-
-# 3) See what doesn’t match
-missing <- setdiff(crit_names, available)
-dup_in_criteria <- crit_names[duplicated(crit_names)]
-
-list(crit_names = crit_names, example_available = head(available), missing = missing, dup = dup_in_criteria)
 
 

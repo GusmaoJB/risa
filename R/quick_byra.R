@@ -1,7 +1,7 @@
 #' Quick Bycatch Risk Assessment (via HRA)
 #'
 #' Performs Habitat Risk Assessment (HRA) analysis following the Bycatch Risk
-#' Assessment (ByRA) described in XXXXX by combining
+#' Assessment (ByRA) described in Hines et al. (2020) by combining
 #' `risa_prep()` to prepare kernel density and overlap maps with
 #' `hra()` to perform the InVEST's HRA computation. This wrapper
 #' allows rapid testing of different criteria tables, decay settings, and

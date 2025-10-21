@@ -35,13 +35,13 @@
 #' stats <- compute_summary_stats_single(
 #'   rr = hra_result,
 #'   total_risk_raw = hra_result$total_raw,
-#'   total_class = hra_result$total
+#'   total_class = hra_result$total_reclassified
 #' )
 #' head(stats)
 #' }
 #' @export
 compute_summary_stats_single <- function(rr, total_risk_raw, total_class) {
-  stressor_names <- setdiff(names(rr), c("total_raw", "total", "total_hotspots_reclassified", "summary_stats"))
+  stressor_names <- setdiff(names(rr), c("total_raw", "total_reclassified", "total_hotspots_reclassified", "summary_stats"))
   rows <- lapply(stressor_names, function(st) {
     E <- rr[[st]]$E_criteria
     C <- rr[[st]]$C_criteria

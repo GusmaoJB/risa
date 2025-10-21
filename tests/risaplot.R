@@ -1,91 +1,4 @@
-setwd("/home/jojo/Documents/pontal_projects/risa")
-library(sf)
-library(risa)
-library(purrr)   # for imap
-library(tidyr)
-library(dplyr)
-library(terra)
-library(ggplot2)
-library(patchwork)
-
-# Creating test data
-set.seed(12)
-spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
-                           lat = rnorm(80, 0, 10), species = "species1"),
-                data.frame(long = rnorm(60, 0, 10),
-                           lat = rnorm(60, 0, 10), species = "species2"))
-str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
-                           lat = rnorm(100, 0, 10), stressor = "stressor1"),
-                data.frame(long = rnorm(50, 0, 10),
-                           lat = rnorm(100, 0, 5), stressor = "stressor2"))
-
-#Load example data
-#path <- "C:/Users/gusma/Documents/research/test_hra/1sp_2stressors.csv"
-path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
-df <- read.csv(path)
-crit_list <- criteria_reshape(df)
-
-# input tests
-input_maps <- risa_prep(spp_df, str_df)
-input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
-input_maps_shp <- risa_prep(spp_df, str_df, output_layer_type = "shp")
-input_maps_raster <- risa_prep(spp_df, str_df, output_layer_type = "raster")
-
-rast_list <- list(
-  species1 = list(
-    stressor1 = list(
-      intensity = input_maps$stressor_kernel_maps$stressor1$raster,
-      `likelihood of interaction`=input_maps$overlap_maps$species1$stressor1$raster),
-    stressor2 = list(
-      intensity = input_maps$stressor_kernel_maps$stressor2$raster,
-      `likelihood of interaction`=input_maps$overlap_maps$species1$stressor2$raster)
-  ),
-  species2 = list(
-    stressor1 = list(
-      intensity = input_maps$stressor_kernel_maps$stressor1$raster,
-      `likelihood of interaction`=input_maps$overlap_maps$species2$stressor1$raster),
-    stressor2 = list(
-      intensity = input_maps$stressor_kernel_maps$stressor2$raster,
-      `likelihood of interaction`=input_maps$overlap_maps$species2$stressor2$raster)
-  )
-)
-
-rast_list_1st <- list(species1 = list(stressor1 = rast_list[[1]][[1]]),
-                      species2 = list(stressor1 = rast_list[[2]][[1]]))
-
-spp_dist <- list(species1 = input_maps$species_distributions$species1$raster,
-                 species2 = input_maps$species_distributions$species2$raster)
-
-stressor1 <- list(stressor1 = rast_list[[1]][[1]])
-crit_sp_1 <- crit_list[[1]]
-crit_sp_1 <- crit_sp_1[crit_sp_1$STRESSOR %in% c(NA, "stressor1"),]
-
-crit_list_1_str <- list()
-
-for (i in 1:length(crit_list)){
-  targ_sp <- crit_list[[i]]
-  crit_list_1_str[[i]] <- targ_sp[targ_sp$STRESSOR %in% c(NA, "stressor1"),]
-}
-
-names(crit_list_1_str) <- names(crit_list)
-
-hra_res0 <- hra(stressor1, spp_dist[[1]], crit_sp_1,
-                equation = "multiplicative",
-                r_max = 3, n_overlap = 2)
-
-hra_res1 <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]],
-           equation = "multiplicative",
-           r_max = 3, n_overlap = 2)
-
-hra_res <- hra(rast_list, spp_dist, crit_list,
-                equation = "multiplicative",
-                r_max = 3, n_overlap = 2)
-
-hra_res_1str <- hra(rast_list_1st, spp_dist, crit_list_1_str,
-                    equation = "multiplicative",
-                    r_max = 3, n_overlap = 2)
-
-hra_input <- hra_res0
+risaplot <-
 
 # Helpers
 # Convert a raster list into a data.frame
@@ -176,8 +89,8 @@ if (length(st_list) > 1) {
 
 overlap_sfs <- list()
 for (species in species_names) {
- overlap_sfs[[species]] <- join_shps(overlap_list[[species]])
- overlap_sfs[[species]][["species"]] <- species
+  overlap_sfs[[species]] <- join_shps(overlap_list[[species]])
+  overlap_sfs[[species]][["species"]] <- species
 }
 
 all_overlap <- do.call(rbind, overlap_sfs)
@@ -210,8 +123,8 @@ gg_overlap <- ggplot() + geom_sf(data=all_overlap, aes(fill=Rating), col="transp
 
 # output for risaMaps
 gg_kde_list <- list(gg_spp + ggtitle("Species KDE"),
-                gg_stress + ggtitle("Stressor KDE"),
-                gg_overlap + ggtitle("Species-Stressor Overlaps"))
+                    gg_stress + ggtitle("Stressor KDE"),
+                    gg_overlap + ggtitle("Species-Stressor Overlaps"))
 
 gg_kde_list
 
@@ -358,5 +271,4 @@ gg_spp_strss <- list(gg_str_raw_risk + aio + ggtitle("Stressor risk"),
                      gg_recl_risk + aio + ggtitle("Reclassified total (combined stress.) risk"),
                      gg_ecosys_raw + aio + ggtitle("Ecosystem risk"),
                      gg_ecosys_reclass + aio + ggtitle("Reclassified ecosystem risk"))
-
 

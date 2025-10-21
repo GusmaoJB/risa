@@ -48,11 +48,11 @@ summary values and \code{terra::freq()} to tabulate class frequencies.
 stats <- compute_summary_stats_single(
   rr = hra_result,
   total_risk_raw = hra_result$total_raw,
-  total_class = hra_result$total
+  total_class = hra_result$total_reclassified
 )
 head(stats)
 }
 }
 \seealso{
-\code{\link{hra4}} for running a full HRA analysis.
+\code{\link{hra}} for running a full HRA analysis.
 }

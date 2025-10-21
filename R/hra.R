@@ -345,7 +345,7 @@ hra <- function(
     )
 
     res$total_raw <- total_raw
-    res$total <- total_cls
+    res$total_reclassified <- total_cls
     res$total_hotspots_reclassified <- total_hotspots_cls
     res$summary_stats <- compute_summary_stats_single(res, total_raw, total_hotspots_cls)
 
@@ -356,7 +356,7 @@ hra <- function(
         }
       }
       res$total_raw <- convert_to_decimal_degrees(total_raw)
-      res$total <- convert_to_decimal_degrees(total_cls)
+      res$total_reclassified <- convert_to_decimal_degrees(total_cls)
       res$total_hotspots_reclassified <- convert_to_decimal_degrees(total_hotspots_cls)
     }
 
@@ -479,7 +479,7 @@ hra <- function(
         for (k in c("E_criteria","C_criteria","Risk_map_raw","Risk_map")) {
           out[[sp]][[nm]][[k]] <- convert_to_decimal_degrees(out[[sp]][[nm]][[k]])
         }
-      } else if (nm %in% c("total_raw", "total", "total_hotspots_reclassified")) {
+      } else if (nm %in% c("total_raw", "total_reclassified", "total_hotspots_reclassified")) {
         out[[sp]][[nm]] <- convert_to_decimal_degrees(out[[sp]][[nm]])
       }
     }

@@ -1,7 +1,7 @@
 setwd("/home/jojo/Documents/pontal_projects/risa")
 library(sf)
 library(risa)
-library(purrr)   # for imap
+library(purrr)
 library(tidyr)
 library(dplyr)
 library(terra)
@@ -85,7 +85,15 @@ hra_res_1str <- hra(rast_list_1st, spp_dist, crit_list_1_str,
                     equation = "multiplicative",
                     r_max = 3, n_overlap = 2)
 
+names(hra_res0)
+names(hra_res1)
+names(hra_res_1str)
+names(hra_res)
+
 hra_input <- hra_res0
+
+risaplot2(input_maps)
+
 
 # Helpers
 # Convert a raster list into a data.frame

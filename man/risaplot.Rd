@@ -10,7 +10,7 @@ risaplot(x)
 \item{x}{An object of class `risaMaps` or `risaHRA`.
 - For `risaMaps`: the object must contain lists of species and stressor
   kernel density maps (`species_kernel_maps`, `stressor_kernel_maps`),
-  and optionally `overlap_maps` and an `area_of_interest` polygon.  
+  and optionally `overlap_maps` and an `area_of_interest` polygon.
 - For `risaHRA`: the object must contain total risk and reclassified
   maps (e.g., `total_raw`, `total_hotspots_reclassified`), and optionally
   per-stressor risk layers and `area_of_interest`.}
@@ -94,8 +94,7 @@ depending on the hierarchical depth of the object (i.e., if one or more species
 
 Internally, this function uses `purrr::map_dfr()` and `vctrs::vec_rbind()`
 for fast concatenation of multiple raster or vector layers, avoiding costly
-iterative `rbind()` calls. `geom_raster()` is used instead of `geom_tile()`
-to optimize large raster plotting.
+iterative `rbind()` calls.
 }
 
 \examples{
@@ -111,6 +110,6 @@ patchwork::wrap_plots(hra_plots)
 
 }
 \seealso{
-[risa::risaMaps()], [risa::risaHRA()], [ggplot2::geom_raster()],
+[risa::risaMaps()], [risa::risaHRA()], [ggplot2::geom_tile()],
 [ggplot2::geom_sf()], [vctrs::vec_rbind()]
 }

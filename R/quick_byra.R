@@ -173,6 +173,7 @@ quick_byra <- function(x, y,
 
   # Outputs
   output <- byra_hra
+  output[["input_maps"]] <- input_maps
   output$area_of_interest <- input_maps$area_of_interest
   return(output)
 }

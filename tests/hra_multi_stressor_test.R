@@ -60,24 +60,19 @@ res <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]],
           equation = "multiplicative",
           r_max = 3, n_overlap = 2)
 
-res
-
-
-res$total_hotspots_reclassified
-terra::plot(res$stressor1$Risk_map)
-terra::plot(res$stressor2$Risk_map)
-terra::plot(res$total_raw)
-terra::plot(res$total)
-
-
 # per-stressor buffers (named)
-res4 <- hra(rast_list, spp_dist, crit_list,
+res_2_2 <- hra(rast_list, spp_dist, crit_list,
              equation = "euclidean",
              decay = "linear",
              r_max = 3, n_overlap = 2,
              buffer_m = c(stressor1 = 500000, stressor2 = 1000000))
 
+byra_test <- quick_byra2(spp_df, str_df, df)
+byra_test$
 
+
+risaplot(res)
+risaplot(byra_test$input_maps)
 
 input_maps <- risa_prep(spp_df, str_df)
 input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
@@ -93,7 +88,8 @@ species_distr <- input_maps$species_distributions
 
 
 
-byra_test <- quick_byra(spp_df, str_df, df)
+
+
 "area_of_interest" %in% names(byra_test)
 
 terra::plot(byra_test$species1$stressor1$E_criteria)

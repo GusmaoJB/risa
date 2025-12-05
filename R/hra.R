@@ -169,13 +169,6 @@ hra <- function(
     } else stop("'criteria' must be a data.frame (single) or list (ecosystem).")
   }
 
-  # Align rasters
-  .align_to <- function(src, template, categorical = TRUE) {
-    if (terra::compareGeom(src, template, stopOnError = FALSE)) return(src)
-    m <- if (categorical) "near" else "bilinear"
-    terra::project(src, template, method = m)
-  }
-
   # Find/extract a SpatRaster if user passed a list container
   .as_raster <- function(x) {
     if (inherits(x, "SpatRaster")) return(x)
@@ -246,7 +239,7 @@ hra <- function(
           if (is.null(r) || !inherits(r,"SpatRaster")) {
             stop("Missing/invalid raster for '", stressor, "' / attribute '", att, "'.")
           }
-          r <- .align_to(r, sp_distr, categorical = TRUE)
+          r <- align_to(r, sp_distr, categorical = TRUE)
           parts[[i]] <- r / (df_map$DQ[i] * df_map$WEIGHT[i])
         }
         Reduce(`+`, parts)
@@ -274,7 +267,7 @@ hra <- function(
                        "complementary_decay_2nd","complementary_decay_3rd") &&
           !is.null(buffer_m[stressor])) {
         # ensure alignment with species grid
-        stress_occ_aligned <- .align_to(stress_occ, sp_distr, categorical = TRUE)
+        stress_occ_aligned <- align_to(stress_occ, sp_distr, categorical = TRUE)
         dec_w <- make_stressor_decay(stress_occ = stress_occ_aligned,
                                      buffer_m   = buffer_m[[stressor]],
                                      decay      = decay,
@@ -417,14 +410,14 @@ hra <- function(
 
   # Calculating ecosystem risk
   # Ecosystem presence mask on template grid (union of species)
-  presences <- lapply(sd, function(d) terra::ifel(!is.na(.align_to(d, template, TRUE)), 1, 0))
+  presences <- lapply(sd, function(d) terra::ifel(!is.na(align_to(d, template, TRUE)), 1, 0))
   sum_pres <- Reduce(`+`, presences)
   eco_mask <- terra::ifel(sum_pres > 0, 1, NA)
 
   # Align per-species general risk (total_raw) to template (continuous)
   rlist <- lapply(species, function(sp) {
     r <- results[[sp]]$total_raw
-    .align_to(r, template, categorical = FALSE)
+    align_to(r, template, categorical = FALSE)
   })
 
   # Make a multilayer SpatRaster

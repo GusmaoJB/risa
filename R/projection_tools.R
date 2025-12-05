@@ -251,3 +251,96 @@ convert_to_decimal_degrees <- function(obj, method = "near", quiet = TRUE) {
 
   stop("Input must be a 'SpatRaster' or 'sf' object.")
 }
+
+
+#' Align a SpatRaster to a template CRS or geometry
+#'
+#' Projects a `SpatRaster` (`src`) to match either the full geometry
+#' (CRS, extent, resolution) of a `SpatRaster` template, or only the CRS
+#' of an `sf` template.
+#'
+#' @param src A `SpatRaster` to be projected / aligned.
+#' @param template Either a `SpatRaster` whose geometry should be matched,
+#'   or an `sf` object whose CRS should be matched.
+#' @param categorical Logical. If `TRUE`, use nearest-neighbor resampling;
+#'   if `FALSE`, use bilinear interpolation.
+#'
+#' @return A `SpatRaster` projected to match the template's CRS (and, if
+#'   applicable, extent and resolution).
+#'
+#' @details
+#' - When `template` is a **SpatRaster**, the function checks whether
+#'   geometry already matches using `terra::compareGeom()`.
+#'   If not, it reprojects the raster to match the template completely.
+#'
+#' - When `template` is an **sf** object, only the CRS is used, and
+#'   `src` is projected to that CRS (no resampling to match extent or resolution
+#'   can occur because those are not defined for sf objects).
+#'
+#' - The interpolation method depends on `categorical`:
+#'   `"near"` for categorical rasters, `"bilinear"` otherwise.
+#'
+#' @examples
+#' \dontrun{
+#' library(terra)
+#' library(sf)
+#'
+#' # Example raster
+#' r <- rast(system.file("ex/elev.tif", package = "terra"))
+#'
+#' # SpatRaster template in another CRS
+#' tmpl_r <- project(r, "EPSG:3857")
+#'
+#' # sf template: just a dummy point with the desired CRS
+#' pt <- data.frame(x = 0, y = 0)
+#' tmpl_sf <- st_as_sf(pt, coords = c("x", "y"), crs = 3857)
+#'
+#' # Align to a SpatRaster template (CRS + extent + resolution)
+#' r2 <- align_to(r, tmpl_r)
+#'
+#' # Align to an sf template (CRS only)
+#' r3 <- align_to(r, tmpl_sf)
+#' }
+#'
+#' @import terra
+#' @import sf
+#' @export
+align_to <- function(src, template, categorical = TRUE) {
+  # interpolation method
+  m <- if (categorical) "near" else "bilinear"
+
+  # If template is a SpatRaster
+  if (inherits(template, "SpatRaster")) {
+    # if geometry (including CRS, extent, resolution) is the same, do nothing
+    if (terra::compareGeom(src, template, stopOnError = FALSE)) {
+      return(src)
+    }
+    # project to match the template
+    return(terra::project(src, template, method = m))
+  }
+
+  # If template is a sf
+  if (inherits(template, "sf")) {
+    crs_t <- sf::st_crs(template)
+    if (is.na(crs_t)) {
+      stop("Template sf object has no CRS.")
+    }
+
+    # Get CRS as a WKT string
+    target_crs <- crs_t$wkt
+    if (is.null(target_crs)) {
+      # Converting to character, just in case...
+      target_crs <- as.character(crs_t)
+    }
+
+    # If CRS is already the same, avoid unnecessary work
+    if (terra::crs(src, proj = TRUE) == target_crs) {
+      return(src)
+    }
+
+    # Project raster to the CRS of the sf object
+    return(terra::project(src, target_crs, method = m))
+  }
+
+  stop("Error: Template must be a 'SpatRaster' or a 'sf' object.")
+}

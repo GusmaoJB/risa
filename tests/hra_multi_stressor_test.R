@@ -4,14 +4,15 @@ library(risa)
 
 # Creating test data
 set.seed(12)
-spp_df <- rbind(data.frame(long = rnorm(80, 0, 10),
-                           lat = rnorm(80, 0, 10), species = "species1"),
-                data.frame(long = rnorm(60, 0, 10),
-                           lat = rnorm(60, 0, 10), species = "species2"))
-str_df <- rbind(data.frame(long = rnorm(100, 0, 5),
-                           lat = rnorm(100, 0, 10), stressor = "stressor1"),
-                data.frame(long = rnorm(50, 0, 10),
-                           lat = rnorm(100, 0, 5), stressor = "stressor2"))
+spp_df <- rbind(data.frame(long = rnorm(80, 0, 3),
+                           lat = rnorm(80, 0, 3), species = "species1"),
+                data.frame(long = rnorm(60, 0, 3),
+                           lat = rnorm(60, 0, 3), species = "species2"))
+str_df <- rbind(data.frame(long = rnorm(100, 0, 1.5),
+                           lat = rnorm(100, 0, 3), stressor = "stressor1"),
+                data.frame(long = rnorm(50, 0, 3),
+                           lat = rnorm(100, 0, 1.5), stressor = "stressor2"))
+
 
 #Load example data
 #path <- "C:/Users/gusma/Documents/research/test_hra/1sp_2stressors.csv"
@@ -67,12 +68,14 @@ res_2_2 <- hra(rast_list, spp_dist, crit_list,
              r_max = 3, n_overlap = 2,
              buffer_m = c(stressor1 = 500000, stressor2 = 1000000))
 
-byra_test <- quick_byra2(spp_df, str_df, df)
-byra_test$
+spp_df
+
+output <- quick_byra(spp_df, str_df, df)
+output$summary_stats
 
 
-risaplot(res)
-risaplot(byra_test$input_maps)
+risaplot(output$kde_maps)
+risaplot(byra_test)
 
 input_maps <- risa_prep(spp_df, str_df)
 input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])

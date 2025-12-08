@@ -5,9 +5,9 @@
 \title{Transform to a metric CRS (UTM or Polar Stereographic fallback)}
 \usage{
 transform_to_metric(
-  shp,
+  input_map,
   metric_crs = NULL,
-  keep_if_projected = FALSE,
+  keep_if_projected = TRUE,
   polar = c("auto", "never", "north", "south"),
   polar_threshold_north = 84,
   polar_threshold_south = -80,
@@ -17,19 +17,21 @@ transform_to_metric(
 )
 }
 \arguments{
-\item{shp}{An `sf` object with a defined CRS. If missing, tries `guess_crs()` (if available).}
+\item{input_map}{An `sf` or `terra::SpatRaster` object with a defined CRS.
+If `sf` and CRS is missing, tries `guess_crs()` (if available).}
 
-\item{metric_crs}{Target CRS (EPSG integer, WKT, or `sf::crs`). If `NULL`, it will be selected automatically.}
+\item{metric_crs}{Target CRS (EPSG integer, WKT, proj4, or `sf::crs`).
+If `NULL`, it will be selected automatically.}
 
-\item{keep_if_projected}{Logical; if `TRUE` and input is already projected (not lon/lat),
-return unchanged. Default `FALSE`.}
+\item{keep_if_projected}{Logical; if `TRUE` and input is already projected
+(not lon/lat), return unchanged. Default `TRUE`.}
 
 \item{polar}{One of `"auto"`, `"never"`, `"north"`, `"south"`. `"auto"` (default)
 uses Polar Stereographic when latitudes exceed thresholds. `"never"` forces UTM
 selection (even near poles). `"north"`/`"south"` force the respective polar CRS.}
 
-\item{polar_threshold_north, polar_threshold_south}{Latitude thresholds (degrees) to trigger
-polar fallback. Defaults: `84` (north), `-80` (south).}
+\item{polar_threshold_north, polar_threshold_south}{Latitude thresholds (degrees)
+to trigger polar fallback. Defaults: `84` (north), `-80` (south).}
 
 \item{polar_crs_north, polar_crs_south}{EPSG codes for polar projections.
 Defaults: `3995` (Arctic), `3031` (Antarctic).}
@@ -37,19 +39,15 @@ Defaults: `3995` (Arctic), `3031` (Antarctic).}
 \item{quiet}{Logical; suppress informative messages. Default `TRUE`.}
 }
 \value{
-A list with: `shape` (transformed `sf`), `coordinates` (matrix from `st_coordinates()`), and `crs` (EPSG or `NA`).
+A list with:
+  - `shape`: transformed `sf` or `SpatRaster`
+  - `coordinates`: matrix from `st_coordinates()` for `sf`, or `NULL` for rasters
+  - `crs`: EPSG code (integer) if available, otherwise `NA_integer_`
 }
 \description{
-Transforms an `sf` layer to a metric CRS. If `metric_crs` is not supplied,
-chooses a WGS84 UTM zone from the layer's geographic center. If the layer
-extends beyond UTM's latitude limits (default ≥84°N or ≤80°S), it falls back
-to Polar Stereographic (WGS84: EPSG 3995 for Arctic, 3031 for Antarctic).
-}
-\examples{
-# Create test data
-coords <- data.frame(long = c(1,2,2,4), lat = c(4,4,2,2))
-coords_vec <- df_to_shp(coords)
-
-# Transform vector to a metric projection
-transform_to_metric(coords_vec)
+Transforms an `sf` or `SpatRaster` object to a metric CRS. If `metric_crs`
+is not supplied, chooses a WGS84 UTM zone from the layer's geographic center.
+If the layer extends beyond UTM's latitude limits (default ≥84°N or ≤80°S),
+it falls back to Polar Stereographic (WGS84: EPSG 3995 for Arctic, 3031 for
+Antarctic).
 }

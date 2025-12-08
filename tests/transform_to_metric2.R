@@ -42,11 +42,11 @@ transform_to_metric2 <- function(
     quiet = TRUE) {
 
   polar <- match.arg(polar)
-  is_sf  <- inherits(input_map, "sf")
+  is_sf <- inherits(input_map, "sf")
   is_rst <- inherits(input_map, "SpatRaster")
 
   if (!is_sf && !is_rst) {
-    stop("`input_map` must be either an sf object or a SpatRaster.")
+    stop("input_map must be either an 'sf' object or a 'SpatRaster'.")
   }
 
   # helper: a cool custom operator that implements if statements
@@ -54,14 +54,14 @@ transform_to_metric2 <- function(
     if (is.null(x) || (is.atomic(x) && length(x) == 1L && is.na(x))) y else x
   }
 
-  ## Get CRS as sf::crs object
+  # Get CRS as sf::crs object
   if (is_sf) {
     crs <- sf::st_crs(input_map)
   } else {
     crs <- sf::st_crs(terra::crs(input_map))  # parse WKT/PROJ string into sf::crs
   }
 
-  ## --- If CRS missing: try guessing for sf; fail for raster ---------------
+  # If CRS missing: try guessing for sf; fail for raster
   if (is.na(crs)) {
     if (is_sf) {
       epsg <- guess_crs(input_map, quiet = TRUE)
@@ -77,21 +77,21 @@ transform_to_metric2 <- function(
     }
   }
 
-  ## Geographic vs projected?
+  # Geographic vs projected?
   if (is_sf) {
     is_geographic <- sf::st_is_longlat(sf::st_geometry(input_map))
   } else {
     is_geographic <- terra::is.lonlat(input_map)
   }
 
-  ## If already projected and user wants to keep it
+  # If already projected and user wants to keep it
   if (!is_geographic && isTRUE(keep_if_projected)) {
     coords <- if (is_sf) sf::st_coordinates(input_map) else NULL
     epsg   <- crs$epsg %||% NA_integer_
     return(list(shape = input_map, coordinates = coords, crs = epsg))
   }
 
-  ## If already WGS84 UTM, return as-is
+  # If already WGS84 UTM, return as-is
   if (!is.na(crs$epsg) &&
       ((crs$epsg >= 32601 && crs$epsg <= 32660) ||
        (crs$epsg >= 32701 && crs$epsg <= 32760))) {
@@ -102,7 +102,7 @@ transform_to_metric2 <- function(
     return(list(shape = input_map, coordinates = coords, crs = crs$epsg))
   }
 
-  ## Choose target CRS if not provided
+  # Choose target CRS if not provided
   if (is.null(metric_crs)) {
     # bbox in native CRS
     if (is_sf) {
@@ -151,7 +151,7 @@ transform_to_metric2 <- function(
       "never" = FALSE,
       "north" = TRUE,
       "south" = TRUE,
-      "auto"  = {
+      "auto" = {
         if (is.na(lat_max) || is.na(lat_min)) {
           if (!quiet) {
             message(
@@ -180,30 +180,30 @@ transform_to_metric2 <- function(
       # If forced north/south, obey; else pick by center latitude sign
       if (polar == "north" || (polar == "auto" && lat_center >= 0)) {
         metric_crs <- polar_crs_north
-        if (!quiet) message(sprintf("Auto-selected Arctic Polar Stereographic → EPSG:%d.", metric_crs))
+        if (!quiet) message(sprintf("Auto-selected Arctic Polar Stereographic: EPSG:%d.", metric_crs))
       } else {
         metric_crs <- polar_crs_south
-        if (!quiet) message(sprintf("Auto-selected Antarctic Polar Stereographic → EPSG:%d.", metric_crs))
+        if (!quiet) message(sprintf("Auto-selected Antarctic Polar Stereographic: EPSG:%d.", metric_crs))
       }
     } else {
       # Standard UTM
-      utm_zone  <- max(1, min(60, floor((lon_center + 180) / 6) + 1))
+      utm_zone <- max(1, min(60, floor((lon_center + 180) / 6) + 1))
       metric_crs <- if (lat_center >= 0) 32600 + utm_zone else 32700 + utm_zone
-      if (!quiet) message(sprintf("Auto-selected UTM zone %d → EPSG:%d.", utm_zone, metric_crs))
+      if (!quiet) message(sprintf("Auto-selected UTM zone %d: EPSG:%d.", utm_zone, metric_crs))
     }
   }
 
-  ## Transform and return
+  # Transform and return
   target_crs <- sf::st_crs(metric_crs)
 
   if (is_sf) {
     input_map_m <- sf::st_transform(input_map, crs = target_crs)
-    coords   <- sf::st_coordinates(input_map_m)
+    coords <- sf::st_coordinates(input_map_m)
     epsg_out <- sf::st_crs(input_map_m)$epsg %||% NA_integer_
   } else {
     # Decide interpolation method based on integerness of the raster
     integer_like <- all(terra::is.int(input_map))
-    method       <- if (integer_like) "near" else "bilinear"
+    method <- if (integer_like) "near" else "bilinear"
 
     if (!quiet) {
       msg <- if (integer_like) "Integer-like raster; using 'near' interpolation."
@@ -217,14 +217,14 @@ transform_to_metric2 <- function(
     epsg_out <- sf::st_crs(terra::crs(input_map_m))$epsg %||% NA_integer_
   }
 
+  # Output
   if (is_sf){
     list(
-      shape       = input_map_m,
+      shape = input_map_m,
       coordinates = coords,
-      crs         = epsg_out
+      crs = epsg_out
     )
   } else {
     input_map_m
   }
 }
-

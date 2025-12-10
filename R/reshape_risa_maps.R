@@ -53,7 +53,7 @@
 #' @export
 reshape_risa_maps <- function(risa_maps,
                               criteria_names,
-                              only_species   = NULL,
+                              only_species = NULL,
                               only_stressors = NULL) {
   # Checks
   if (!inherits(risa_maps, "risaMaps")) {
@@ -91,11 +91,11 @@ reshape_risa_maps <- function(risa_maps,
   species   <- if (is.null(only_species)) species_all else intersect(species_all, only_species)
   stressors <- if (is.null(only_stressors)) stressors_all else intersect(stressors_all, only_stressors)
 
-  # Build output: species -> stressor -> {criteria_names[1], criteria_names[2]} ---
+  # Build output: species -> stressor -> {criteria_names[1], criteria_names[2]}
   out <- setNames(lapply(species, function(sp) {
     per_sp <- lapply(stressors, function(st) {
       exposure <- get2(risa_maps, c("stressor_kernel_maps", st, "raster"))
-      overlap  <- get2(risa_maps, c("overlap_maps", sp, st, "raster"))
+      overlap <- get2(risa_maps, c("overlap_maps", sp, st, "raster"))
       if (is.null(exposure) || is.null(overlap)) return(NULL)
       stats::setNames(list(exposure, overlap), criteria_names)
     })

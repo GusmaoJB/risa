@@ -93,8 +93,8 @@ risa_prep <- function(
     if (!quiet) message("No area provided; creating AOI from ", area_strategy, " layers (", area_type, ").")
     src <- switch(area_strategy,
                   "stressor" = merge_shp(str_list),
-                  "species"  = merge_shp(spp_list),
-                  "union"    = merge_shp(c(spp_list, str_list)))
+                  "species" = merge_shp(spp_list),
+                  "union" = merge_shp(c(spp_list, str_list)))
     area <- create_area(src, area_type = area_type, buffer_frac = area_buffer_frac, quiet = quiet)
   } else if (inherits(area, "bbox")) {
     area <- sf::st_as_sfc(area)

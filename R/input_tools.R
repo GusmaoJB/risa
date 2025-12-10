@@ -5,6 +5,7 @@
 #' @param return one of c("sf_union","points") — default "sf_union" for risa_prep()
 #' @return if return = "sf_union": an sf with dissolved geometry (union of inputs)
 #'         if return = "points":   a data.frame of XY (old behavior)
+#' @importFrom sf st_crs st_transform st_geometry st_as_sf st_union st_coordinates
 #' @examples
 #' # Create test data
 #' vec1 <- df_to_shp(data.frame(long = c(1,2,2,4), lat = c(4,4,2,2)))
@@ -14,8 +15,8 @@
 #' # Convert vector list into data.frame
 #' df <- merge_shp(vec_list)
 #' @export
-merge_shp <- function(shp_list, group_size = NULL, return = c("sf_union","points")) {
-  return <- match.arg(return)
+merge_shp <- function(shp_list, group_size = NULL, output = c("sf_union","points")) {
+  output <- match.arg(output)
 
   if (!is.list(shp_list) || length(shp_list) == 0L) {
     stop("`shp_list` must be a non-empty list of sf objects.")
@@ -25,7 +26,7 @@ merge_shp <- function(shp_list, group_size = NULL, return = c("sf_union","points
   }
 
   # --------- New default: union to a single sf geometry (for risa_prep) -------
-  if (return == "sf_union") {
+  if (output == "sf_union") {
     # Harmonize CRS to the first layer (safer than mixing)
     crs0 <- sf::st_crs(shp_list[[1]])
     shp_list <- lapply(shp_list, function(s) {
@@ -69,10 +70,16 @@ merge_shp <- function(shp_list, group_size = NULL, return = c("sf_union","points
     )
 
     if (!is.null(group_size) && group_size %in% names(shp)) {
-      n_per_feat <- sf::st_npoints(sf::st_geometry(shp), by_feature = TRUE)
+      geom <- sf::st_geometry(shp)
+
+      # count coordinates per feature
+      n_per_feat <- vapply(
+        geom,
+        function(g) nrow(sf::st_coordinates(g)),
+        integer(1L))
+
       df[[group_size]] <- rep(shp[[group_size]], times = n_per_feat)
     }
-
     out_list[[i]] <- df
   }
 
@@ -80,6 +87,7 @@ merge_shp <- function(shp_list, group_size = NULL, return = c("sf_union","points
   row.names(out) <- NULL
   out
 }
+
 
 #' Convert a data.frame to an sf object
 #'
@@ -342,4 +350,119 @@ as_sf_list <- function(obj, group = NULL, label_prefix = "layer") {
     return(lst)
   }
   stop("Input must be an `sf`, data.frame, or a list of those.")
+}
+
+
+#' Rescale a SpatRaster to a New Numeric Range
+#'
+#' Linearly rescales the values of a `terra::SpatRaster` to a new user-defined
+#' numeric range. The output is returned as a `SpatRaster` with values rounded
+#' to four decimal places.
+#'
+#' @param x A `terra::SpatRaster` object containing the values to be rescaled.
+#' @param new_range A numeric vector of length 2 giving the new minimum and
+#'   maximum values for rescaling (`c(new_min, new_max)`).
+#'
+#' @return A `terra::SpatRaster` object with values rescaled to the specified
+#'   range.
+#'
+#' @details
+#' The function performs linear rescaling using:
+#' \deqn{
+#'   x' = a + \frac{(x - \min(x)) (b - a)}{\max(x) - \min(x)}
+#' }
+#' where \eqn{a} and \eqn{b} are the user-defined minimum and maximum.
+#'
+#' If the raster has no variation (`min == max`), the function throws an error.
+#'
+#' @examples
+#' \dontrun{
+#' library(terra)
+#' r <- rast(matrix(runif(100), 10, 10))
+#' r2 <- scale_vars(r, c(0, 1))
+#' }
+#'
+#' @importFrom terra minmax
+#' @export
+scale_vars <- function(x, new_range, quiet = TRUE) {
+
+  if (!is.numeric(new_range) || length(new_range) != 2L) {
+    if (!quiet) stop("Error: new_range must be a numeric vector of length 2 (min, max).")
+  }
+  if (new_range[1] >= new_range[2]) {
+    if (!quiet) stop("Error: minimum value for rescaling is not valid (must be < max).")
+  }
+
+  mm <- terra::minmax(x)
+  old_min <- mm[1]
+  old_max <- mm[2]
+
+  if (old_min == old_max) {
+    if (!quiet) stop("Error: cannot rescale a raster with constant values (min == max).")
+  }
+
+  scaled_x <- new_range[1] +
+    ((x - old_min) * (new_range[2] - new_range[1])) / (old_max - old_min)
+
+  return(round(scaled_x, 4))
+}
+
+
+#' Apply Value Rescaling to a List of SpatRasters
+#'
+#' Applies linear rescaling to each element of a list of `SpatRaster` objects,
+#' using a user-defined numeric range. Optionally rounds integer rasters after
+#' scaling.
+#'
+#' @param rlist A list of `terra::SpatRaster` objects to be rescaled.
+#' @param new_range A numeric vector of length 2 defining the new value range
+#'   for rescaling (`c(new_min, new_max)`). If `NULL`, no rescaling is applied.
+#' @param cat Logical. If `TRUE`, any raster that is internally stored as an
+#'   integer type (`terra::is.int()`) will be rounded after scaling.
+#' @param quiet Logical. If `TRUE`, suppresses progress messages.
+#'
+#' @return A list of `terra::SpatRaster` objects, rescaled where appropriate.
+#'
+#' @details
+#' For each raster:
+#' * Its current min/max is compared with `new_range`.
+#' * If identical, no rescaling is performed.
+#' * Otherwise, the raster is passed to `scale_vars()`.
+#'
+#' The function preserves the structure of the input list.
+#'
+#' @examples
+#' \dontrun{
+#' library(terra)
+#' r1 <- rast(matrix(runif(100), 10, 10))
+#' r2 <- rast(matrix(runif(100), 10, 10))
+#' lst <- list(a = r1, b = r2)
+#'
+#' scaled <- apply_scale(lst, c(0, 1))
+#' }
+#'
+#' @importFrom terra minmax is.int
+#' @export
+apply_scale <- function(rlist, new_range, cat = FALSE, quiet = TRUE) {
+  x <- rlist
+
+  if (!is.null(new_range)) {
+    for (i in seq_along(x)) {
+      r <- x[[i]]
+      mm <- terra::minmax(r)
+      old_min <- mm[1]
+      old_max <- mm[2]
+
+      if (old_min == new_range[1] && old_max == new_range[2]) {
+        if (!quiet) message(names(x)[i], " range and target range are equal. Nothing to do...")
+      } else {
+        x[[i]] <- scale_vars(r, new_range)
+      }
+
+      if (cat && terra::is.int(x[[i]])) {
+        x[[i]] <- round(x[[i]])
+      }
+    }
+  }
+  return(x)
 }

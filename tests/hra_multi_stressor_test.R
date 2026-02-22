@@ -24,6 +24,12 @@ crit_list <- criteria_reshape(df)
 input_maps <- risa_prep(spp_df, str_df)
 input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
 
+# test
+sp_sf <- input_maps$species_kernel_maps$species1$shp
+plot(sp_sf)
+kde_raster <- terra::rasterize(vect(sp_sf), rast(sp_sf, resolution=1000))
+terra::plot(kde_raster)
+
 # Create kernel maps of species and stressor distributions and overlap maps
 risa_maps <- risa_prep(spp_df, str_df)
 # export to compare with invest
@@ -75,7 +81,7 @@ output$summary_stats
 
 
 risaplot(output$kde_maps)
-risaplot(byra_test)
+risaplot(output)
 
 input_maps <- risa_prep(spp_df, str_df)
 input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])

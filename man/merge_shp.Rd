@@ -4,7 +4,7 @@
 \alias{merge_shp}
 \title{Merge a list of sf layers}
 \usage{
-merge_shp(shp_list, group_size = NULL, return = c("sf_union", "points"))
+merge_shp(shp_list, group_size = NULL, output = c("sf_union", "points"))
 }
 \arguments{
 \item{shp_list}{list of sf objects}

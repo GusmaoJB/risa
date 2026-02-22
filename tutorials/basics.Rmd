@@ -1,0 +1,91 @@
+---
+title: 'risa: Basic functions'
+author: "Joao Bosco Gusmao"
+date: "2025-12-12"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The *risa* package
+
+The **risa** package, which stands for RISk Assessment, was designed to automate the 
+applycation of the Habitat Risk Assessment (HRA) model, which is part of the *InVEST* 
+(Integrated Valuation of Ecosystem Services and Tradeoffs) toolkit developed by the 
+Natural Capital Project (Arkema et al., 2014; Sharp et al., 2020).
+
+There are a entire suite of functions that were projected to automate the steps to apply 
+the *ByRA* (Bycatch Risk Assessment) toolkit (Wilhelm et al., 2022). *ByRA* uses HRA 
+methodology to quantify the spatial overlap between fisheries and marine megafauna 
+and has been applied to assess bycatch risk for marine mammals.
+
+Specifically, **risa** automates the generation of Kernel Density Maps of species 
+occurrences and stressor intensities from either data frames or shapefiles, the 
+creation of overlap hotspot maps, and the execution of the full HRA model for one 
+or multiple species and stressors. Users can select among multiplicative and Euclidean 
+formulations of risk, apply optional decay functions to account for stressor influence 
+buffers, and generate detailed summary statistics. In addition, **risa** provides 
+flexibility to customize model settings, including the number of risk classes, 
+buffer sizes for kernel density estimates and stressor zones, and the choice of 
+coordinate system (metric or decimal).
+
+## Installation
+Since **risa** is still in its *alpha* version, it cannot be installed from R's CRAN repository. 
+Thus, **risa** must be installed from a GitHub repository, which can be assessed via the link:
+
+[https://github.com/GusmaoJB/risa/](https://github.com/GusmaoJB/risa/)
+
+The easiest way to install **risa** is via *devtools::install_github()*:
+
+```
+# install devtools
+library(devtools)
+
+# install the risa package
+devtools::install_github("GusmaoJB/risa")
+```
+
+Since we depend on function in the packages *terra* and *sf* to load and manipulate 
+rasters and shapefiles, we need to load these packages to perform our examples. Also, 
+let's keep our work files (rasters, shapefiles, dataframes) in a *\data* folder inside our working directory.
+In this first example, let's suppose we have species and stressor distribuions as 
+occurrence points in CSV files:
+
+```
+library(sf)
+library(raster)
+
+spp_df <- read.csv("data\species.csv")
+str_df <- read.csv("data\stressor.csv")
+
+head(spp_df)
+head(str_df)
+```
+
+
+
+
+
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

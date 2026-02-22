@@ -154,13 +154,13 @@ risaplot <- function(x) {
       pivot_longer(-c(Longitude,Latitude),
                    names_to = "group",
                    values_to = value_name) |>
-      filter(!is.na(.data[[value_name]]))
+      dplyr::filter(!is.na(.data[[value_name]]))
   }
 
   #Merge multiple sf objects
   .join_shps <- function(r_list, group_col = "group") {
     # bind_rows is fast and preserves sf; add group from names
-    imap(r_list, ~ mutate(.x$shp, !!group_col := .y)) |>
+    imap(r_list, ~ dplyr::mutate(.x$shp, !!group_col := .y)) |>
       vctrs::vec_rbind()
   }
 
@@ -195,7 +195,7 @@ risaplot <- function(x) {
       # overlap: map over species, each returns long df with its stressors
       overlap_df <- purrr::map_dfr(species_names, function(sp) {
         .rast_list_to_df(overlap_list[[sp]], "raster", value_name = "value") |>
-          mutate(species = sp)
+          dplyr::mutate(species = sp)
       })
 
       aoi_layer <- .ensure_aoi_layer(aoi, xy_df = spp_df, crs_like = sp_list[[1]]$raster)
@@ -217,7 +217,7 @@ risaplot <- function(x) {
       # shp mode
       spp_sf <- if (length(sp_list) == 1) sp_list[[1]]$shp else .join_shps(sp_list)
       stressor_sf <- if (length(st_list) == 1) st_list[[1]]$shp else .join_shps(st_list)
-      all_overlap <- map_dfr(species_names, ~ mutate(.join_shps(overlap_list[[.x]]), species = .x))
+      all_overlap <- map_dfr(species_names, ~ dplyr::mutate(.join_shps(overlap_list[[.x]]), species = .x))
 
       aoi_layer <- geom_sf(data = aoi, fill = "transparent", linewidth = 0.5)
 
@@ -252,12 +252,12 @@ risaplot <- function(x) {
 
     if (depth == 2) {
       risk_raw <- terra::as.data.frame(x$total_raw, xy = TRUE) |>
-        rename(Longitude = x, Latitude = y) |>
-        rename(Risk = 3)
+        dplyr::rename(Longitude = x, Latitude = y) |>
+        dplyr::rename(Risk = 3)
       risk_reclassified <- terra::as.data.frame(x$total_hotspots_reclassified, xy = TRUE) |>
-        rename(Longitude = x, Latitude = y) |>
-        rename(`Risk (reclass.)` = 3) |>
-        mutate(`Risk (reclass.)` = .reclass_labels(`Risk (reclass.)`))
+        dplyr::rename(Longitude = x, Latitude = y) |>
+        dplyr::rename(`Risk (reclass.)` = 3) |>
+        dplyr::mutate(`Risk (reclass.)` = .reclass_labels(`Risk (reclass.)`))
 
       if (is.null(aoi_layer)) {
         aoi_layer <- .ensure_aoi_layer(x$area_of_interest %||% NULL,
@@ -276,12 +276,12 @@ risaplot <- function(x) {
         stressor_risk_reclass <- .rast_list_to_df(x, "Risk_map",
                                                   group_names = stressor_names,
                                                   value_name = "Risk (reclass.)") |>
-          mutate(`Risk (reclass.)` = .reclass_labels(`Risk (reclass.)`))
+          dplyr::mutate(`Risk (reclass.)` = .reclass_labels(`Risk (reclass.)`))
 
         risk_max_ratings <- terra::as.data.frame(x$total_reclassified, xy = TRUE) |>
-          rename(Longitude = x, Latitude = y) |>
-          rename(`Highest str. risk (reclass.)` = 3) |>
-          mutate(`Highest str. risk (reclass.)` =
+          dplyr::rename(Longitude = x, Latitude = y) |>
+          dplyr::rename(`Highest str. risk (reclass.)` = 3) |>
+          dplyr::mutate(`Highest str. risk (reclass.)` =
                    .reclass_labels(`Highest str. risk (reclass.)`))
 
         gg_str_risk_raw <- .gg_raster(stressor_risk_raw, "Risk", aoi_layer) +
@@ -308,12 +308,12 @@ risaplot <- function(x) {
 
     } else {
       eco_risk_raw <- terra::as.data.frame(x$ecosys_risk_raw, xy = TRUE) |>
-        rename(Longitude = x, Latitude = y) |>
-        rename(Risk = 3)
+        dplyr::rename(Longitude = x, Latitude = y) |>
+        dplyr::rename(Risk = 3)
       eco_risk_reclass <- terra::as.data.frame(x$ecosys_risk_classified, xy = TRUE) |>
-        rename(Longitude = x, Latitude = y) |>
-        rename(`Risk (reclass.)` = 3) |>
-        mutate(`Risk (reclass.)` = .reclass_labels(`Risk (reclass.)`))
+        dplyr::rename(Longitude = x, Latitude = y) |>
+        dplyr::rename(`Risk (reclass.)` = 3) |>
+        dplyr::mutate(`Risk (reclass.)` = .reclass_labels(`Risk (reclass.)`))
 
       aoi_layer <- .ensure_aoi_layer(x$area_of_interest %||% NULL,
                                      xy_df = eco_risk_raw, crs_like = x$ecosys_risk_raw)
@@ -325,16 +325,16 @@ risaplot <- function(x) {
       # Per-species totals
       raw_risk_df <- map_dfr(species_names, ~ {
         terra::as.data.frame(x[[.x]]$total_raw, xy = TRUE) |>
-          rename(Longitude = x, Latitude = y) |>
-          rename(Risk = 3) |>
-          mutate(species = .x)
+          dplyr::rename(Longitude = x, Latitude = y) |>
+          dplyr::rename(Risk = 3) |>
+          dplyr::mutate(species = .x)
       })
 
       recl_risk_df <- map_dfr(species_names, ~ {
         terra::as.data.frame(x[[.x]]$total_reclassified, xy = TRUE) |>
-          rename(Longitude = x, Latitude = y) |>
-          rename(`Risk (reclass.)` = 3) |>
-          mutate(species = .x,
+          dplyr::rename(Longitude = x, Latitude = y) |>
+          dplyr::rename(`Risk (reclass.)` = 3) |>
+          dplyr::mutate(species = .x,
                  `Risk (reclass.)` = .reclass_labels(`Risk (reclass.)`))
       })
 
@@ -351,18 +351,18 @@ risaplot <- function(x) {
       raw_str_risk_df <- map_dfr(species_names, function(sp) {
         map_dfr(stressor_names, function(st) {
           terra::as.data.frame(x[[sp]][[st]]$Risk_map_raw, xy = TRUE) |>
-            rename(Longitude = x, Latitude = y) |>
-            rename(Risk = 3) |>
-            mutate(species = sp, stressor = st)
+            dplyr::rename(Longitude = x, Latitude = y) |>
+            dplyr::rename(Risk = 3) |>
+            dplyr::mutate(species = sp, stressor = st)
         })
       })
 
       reclass_str_risk_df <- map_dfr(species_names, function(sp) {
         map_dfr(stressor_names, function(st) {
           terra::as.data.frame(x[[sp]][[st]]$Risk_map, xy = TRUE) |>
-            rename(Longitude = x, Latitude = y) |>
-            rename(`Risk (reclass.)` = 3) |>
-            mutate(species = sp, stressor = st,
+            dplyr::rename(Longitude = x, Latitude = y) |>
+            dplyr::rename(`Risk (reclass.)` = 3) |>
+            dplyr::mutate(species = sp, stressor = st,
                    `Risk (reclass.)` = .reclass_labels(`Risk (reclass.)`))
         })
       })

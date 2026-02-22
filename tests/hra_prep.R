@@ -1,168 +1,208 @@
 library(sf)
 
 
-byra_prep <- function(spp_list, str_list,
+byra_prep <- function(spp_maplist, str_maplist,
                      area = NULL,
                      pixel_size = NULL,
                      dimyx = c(512,512),
-                     reclass = NULL,
+                     reclass = c(1, 3),
                      reclass_cat = FALSE,
+                     overlaps = TRUE,
                      crs = NULL,
                      quiet = TRUE) {
-  print("Nice!")
-}
 
-# Basic checks
-# Check area
-if (inherits(area, "bbox")) {
-  area <- sf::st_as_sfc(area)
-} else if (is.data.frame(area)) {
-  area <- df_to_shp(area)
-} else if (!inherits(area, "sf")) {
-  stop("`area` must be NULL, bbox, data.frame, or sf.")
-}
+  spp_list <- spp_maplist
+  str_list <- str_maplist
 
-# Check if inputs are 'sf' objects and convert them to 'SpatRaster'
-lapply()
+  # Helpers
+  # Checks if all rasters in a list have the same crs
+  .same_crs <- function(obj_list) {
+    # empty or single-element list: TRUE
+    if (length(obj_list) < 2) return(TRUE)
 
-# Check raster inputs
-spp_list <- .as_raster(spp_list)
-if (!inherits(sp_distr, "SpatRaster")) stop("'spp_list' must be or contain a SpatRaster object.")
-str_list <- .as_raster(str_list)
-if (!inherits(sp_distr, "SpatRaster")) stop("'str_list' must be or contain a SpatRaster object.")
+    # get a comparable CRS representation (WKT) for each object
+    crs_wkt <- lapply(obj_list, function(x) {
+      if (inherits(x, c("SpatRaster", "SpatVector"))) {
+        terra::crs(x, proj = TRUE) # WKT string
+      } else if (inherits(x, c("sf", "sfc"))) {
+        sf::st_crs(x)$wkt # WKT string
+      } else {
+        stop("Unsupported object of class: ", paste(class(x), collapse = ", "),
+             ". Expected 'SpatRaster', 'SpatVector', 'sf' or 'sfc'.")
+      }
+    })
 
-# Defining important objects
-all_rasters <- c(spp_list, str_list)
+    ref <- crs_wkt[[1]]
 
-# Check if all rasters have the same crs
-if (!.same_crs(all_rasters)){
-  if (!quiet) {
-    message("Input rasters do not have the same coordinate system.")
+    # all CRSs must be identical to the first one
+    all(vapply(crs_wkt, function(z) identical(z, ref), logical(1)))
+  }
+
+  # Checks if input is a SpatRaster or sf object.
+  .check_sf_spatrast <- function(x) {
+    allowed <- c("SpatRaster", "sf", "sfc", "SpatVector")
+    if (!inherits(x, allowed)) {
+      if (is.list(x)) {
+        for (item in x) {
+          if (!inherits(item, allowed)) {
+            stop("Inputs must be or contain 'sf', 'sfc', 'SpatRaster' or 'SpatVector' objects.")
+          }
+        }
+      } else {
+        stop("Inputs must be 'sf', 'sfc', 'SpatRaster' or 'SpatVector' objects.")
+      }
+    }
+  }
+
+
+  # Basic checks
+  # Check area
+  if (is.null(area)) {
+    if (!quiet) message("Area is NULL.")
+  } else if (inherits(area, "bbox")) {
+    area <- sf::st_as_sfc(area)
+  } else if (is.data.frame(area)) {
+    area <- df_to_shp(area)
+  } else if (!inherits(area, "sf")) {
+    stop("`area` must be NULL, bbox, data.frame, or sf.")
+  }
+
+  # Check if inputs are 'sf' or 'SpatRaster'
+  .check_sf_spatrast(c(spp_list, str_list))
+
+  # Check if all rasters and sf have the same crs: if not, transform!
+  template <- NULL
+  if (!.same_crs(c(spp_list, str_list))){
+    if (!quiet) message("Input rasters do not have the same coordinate system.")
     if (is.null(area)) {
-      stop("Cannot define a template crs without area.")
+      if (!quiet) message("No area was provided. Taking the CRS of the first map from spp_list as template")
+      if (is.list(spp_list)) {
+        template <- spp_list[[1]]
+      } else {
+        template <- spp_list
+      }
+      if (!quiet) message("Reprojecting rasters to template's CRS...")
+      spp_list <- lapply(spp_list,
+                         function(x) align_to(x, template = template,
+                                              categorical = terra::is.int(x) || terra::is.factor(x)))
+      str_list <- lapply(str_list,
+                         function(y) align_to(y, template = template,
+                                              categorical = terra::is.int(y) || terra::is.factor(y)))
     } else {
-      message("Using area's crs as template: reprojecting rasters...")
+      if (! quiet) message("Using area's crs as template: reprojecting rasters...")
       longlat <- sf::st_is_longlat(area)
       if (longlat) {
         area <- transform_to_metric(area)
       }
+      template <- area
       spp_list <- lapply(spp_list,
-        function(x) align_to(x, template = template, categorical = terra::is.int(x)))
+                         function(x) align_to(x, template = template,
+                                              categorical = terra::is.int(x)))
       str_list <- lapply(str_list,
-        function(y) align_to(y, template = template, categorical = terra::is.int(y)))
-      all_rasters <- lapply(all_rasters,
-        function(z) align_to(z, template = template, categorical = terra::is.int(z)))
+                         function(y) align_to(y, template = template,
+                                              categorical = terra::is.int(y)))
     }
   }
-} else if (is.null(area)) {
-  if (!quiet) message("No area provided; creating AOI (bounding box) from all layers.")
-  e_all <- do.call(ext, all_rasters)
 
-  # Estimate buffer as 5% of the diagonal of the combined extent
-  dx <- xmax(e) - xmin(e)
-  dy <- ymax(e) - ymin(e)
-  diag_len <- sqrt(dx^2 + dy^2)
-  buf <- 0.05 * diag_len
-
-  e_buf <- ext(
-    xmin(e) - buf,
-    xmax(e) + buf,
-    ymin(e) - buf,
-    ymax(e) + buf)
-
-  area <- st_bbox(c(
-    xmin = xmin(e_buf),
-    ymin = ymin(e_buf),
-    xmax = xmax(e_buf),
-    ymax = ymax(e_buf)
-  ), crs = st_crs(all_rasters[[1]]))
-}
-
-# If
-
-
-
-
-
-
-
-# Helpers
-# Checks if all rasters in a list have the same crs
-.same_crs <- function(rlist) {
-  crs_list <- lapply(rlist, crs)
-  ref <- crs_list[[1]]
-  all(vapply(crs_list, function(x) x == ref, logical(1)))
-}
-
-# Find/extract a SpatRaster if user passed a list container
-.as_raster <- function(x) {
-  if (inherits(x, "SpatRaster")) return(x)
-  if (is.list(x)) {
-    for (item in x) {
-      r <- .as_raster(item)
-      if (inherits(r, "SpatRaster")) return(r)
+  # Creating area of interest, if not provided
+  if (is.null(template)) {
+    if (is.list(spp_list)) {
+      template <- spp_list[[1]]
+    } else {
+      template <- spp_list
     }
   }
-  NULL
-}
+  if (is.null(area)) {
+    if (!quiet) message("No area provided; creating AOI (bounding box) from all layers.")
+    e <- NULL
+    if (all(is.list(spp_list), is.list(str_list))) {
+      e <- do.call(terra::ext, c(spp_list, str_list))
+    } else if (is.list(spp_list) && !is.list(str_list)) {
+      e <- do.call(terra::ext, c(spp_list, list(str_list)))
+    } else if (!is.list(spp_list) && is.list(str_list)) {
+      e <- do.call(terra::ext, c(list(spp_list), str_list))
+    } else {
+      e <- do.call(terra::ext, list(spp_list, str_list))
+    }
 
-# Scale continuous values
-.scale_vars <- function(x, mim_max) {
-  if (!is.numeric(min_max)) {
-    stop("Error: min_max must be a numeric vector.")
+    # Estimate buffer as 5% of the diagonal of the combined extent
+    dx <- terra::xmax(e) - terra::xmin(e)
+    dy <- terra::ymax(e) - terra::ymin(e)
+    diag_len <- sqrt(dx^2 + dy^2)
+    buf <- 0.05 * diag_len
+
+    crs_template <- if (inherits(template, "SpatRaster")) {
+      sf::st_crs(terra::crs(template, proj = TRUE))
+    } else {
+      sf::st_crs(template)
+    }
+
+    e_buf <- terra::ext(
+      terra::xmin(e) - buf,
+      terra::xmax(e) + buf,
+      terra::ymin(e) - buf,
+      terra::ymax(e) + buf)
+
+    area <- sf::st_bbox(c(
+      xmin = terra::xmin(e_buf),
+      ymin = terra::ymin(e_buf),
+      xmax = terra::xmax(e_buf),
+      ymax = terra::ymax(e_buf)), crs = crs_template)
+
+    area <- sf::st_as_sfc(area)
   }
-  if (mim_max[1] >= mim_max[2]) {
-    stop("Error: minimum value for rescaling is not valid.")
+
+  # If reclass is a vector, then apply a transformation
+  spp_output <- apply_scale(spp_list, reclass, cat = reclass_cat)
+  str_output <- apply_scale(str_list, reclass, cat = reclass_cat)
+
+  # Estimate overlaps
+  overlap_maps <- list()
+  sp_names <- names(spp_output)
+  st_names <- names(str_output)
+
+  if (overlaps) {
+    if (reclass_cat) {
+      for (sp in sp_names) {
+        for (st in st_names) {
+          overlap_maps[[sp]][[st]] <- get_overlap_kernel(spp_output[[sp]],
+                                                     str_output[[st]],
+                                                     n_classes = max(reclass),
+                                                     output_layer_type = "raster")
+        }
+      }
+    } else {
+      for (sp in sp_names) {
+        for (st in st_names) {
+          product_map <- spp_output[[sp]] * str_output[[st]]
+          overlap_maps[[sp]][[st]] <- scale_vars(product_map, reclass)
+        }
+      }
+    }
   }
-  scaled_x <- mim_max[1] + (x-min(x) * (mim_max[2] - mim_max[1])) / (max(x) - min(x))
-  return(round(scaled_x, 4))
+
+  # Preparing outputs
+  spp_distribution_list <- list()
+  str_distribution_list <- list()
+
+  for (sp in sp_names) {
+    spp_distribution_list[[sp]] <- terra::ifel(spp_list[[sp]] > 0, 1, NA)
+  }
+
+  for (st in st_names) {
+    str_distribution_list[[st]] <- terra::ifel(str_list[[st]] > 0, 1, NA)
+  }
+
+  # Output
+  output <- list(
+    species_distributions = spp_distribution_list,
+    stressor_distributions = str_distribution_list,
+    species_kernel_maps = spp_output,
+    stressor_kernel_maps = str_output,
+    overlap_maps = overlap_maps,
+    area_of_interest = area)
+
+  class(output) <- c("risaMaps", class(output))
+
+  return(output)
 }
-
-
-
-
-
-
-
-
-
-# Prepare a list of rasters to hra
-# Checks if all rasters have valid crs
-
-
-
-  # if yes, checks if area has a valid crs
-    # if not, guess its crs
-      # if cannot guess, stop
-# 2 - If there is no area, try define it from bounding box of all rasters
-  # Checks if all rasters in each list have the same crs
-    # If not, reproject all rasters to a common crs
-      # if crs is NULL, grab the first crs of the first stressor rasters as template
-        # reproject all rasters
-# 3 - If reclass is a vector, then apply a transformation
-
-
-
-
-
-
-
-
-# Check if spp_list and str_list are lists of rasters (SpatRaster objects)
-
-
-
-
-# Accept list containers for sp_distr
-sp_distr <- .as_raster(sp_distr)
-if (!inherits(sp_distr, "SpatRaster")) stop("'species_distr' must be or contain a SpatRaster.")
-
-
-
-
-
-# takes as input SpatRaster, sf, or data.frame objects.
-# If area is not provided, it will be derived as a convex hull from the stressor blob
-# All rasters and shp will be reprojected after the CRS of the area of interest
-# All rasters and shp will be cropped after the area of interest
-# The output is a list ready for hra() function

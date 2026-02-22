@@ -2,60 +2,28 @@
 % Please edit documentation in R/projection_tools.R
 \name{align_to}
 \alias{align_to}
-\title{Align a SpatRaster to a template CRS or geometry}
+\title{Align a SpatRaster or sf object to a template CRS or geometry}
 \usage{
-align_to(src, template, categorical = TRUE)
+align_to(src, template, categorical = TRUE, pixel_size = NULL)
 }
 \arguments{
-\item{src}{A `SpatRaster` to be projected / aligned.}
+\item{src}{A `SpatRaster` or `sf` object to be projected / aligned.}
 
 \item{template}{Either a `SpatRaster` whose geometry should be matched,
 or an `sf` object whose CRS should be matched.}
 
 \item{categorical}{Logical. If `TRUE`, use nearest-neighbor resampling;
 if `FALSE`, use bilinear interpolation.}
+
+\item{pixel_size}{If `src` is `sf`, this sets the raster resolution (in map units).
+If NULL and `template` is a `SpatRaster`, resolution is inferred from template.
+Default is `NULL`.}
 }
 \value{
-A `SpatRaster` projected to match the template's CRS (and, if
-  applicable, extent and resolution).
+A `SpatRaster` aligned to the template.
 }
 \description{
-Projects a `SpatRaster` (`src`) to match either the full geometry
+Projects a `SpatRaster` or `sf` object (`src`) to match either the full geometry
 (CRS, extent, resolution) of a `SpatRaster` template, or only the CRS
 of an `sf` template.
-}
-\details{
-- When `template` is a **SpatRaster**, the function checks whether
-  geometry already matches using `terra::compareGeom()`.
-  If not, it reprojects the raster to match the template completely.
-
-- When `template` is an **sf** object, only the CRS is used, and
-  `src` is projected to that CRS (no resampling to match extent or resolution
-  can occur because those are not defined for sf objects).
-
-- The interpolation method depends on `categorical`:
-  `"near"` for categorical rasters, `"bilinear"` otherwise.
-}
-\examples{
-\dontrun{
-library(terra)
-library(sf)
-
-# Example raster
-r <- rast(system.file("ex/elev.tif", package = "terra"))
-
-# SpatRaster template in another CRS
-tmpl_r <- project(r, "EPSG:3857")
-
-# sf template: just a dummy point with the desired CRS
-pt <- data.frame(x = 0, y = 0)
-tmpl_sf <- st_as_sf(pt, coords = c("x", "y"), crs = 3857)
-
-# Align to a SpatRaster template (CRS + extent + resolution)
-r2 <- align_to(r, tmpl_r)
-
-# Align to an sf template (CRS only)
-r3 <- align_to(r, tmpl_sf)
-}
-
 }

@@ -34,7 +34,7 @@ get_overlap_kernel <- function(
     output_layer_type = c("shp","raster","both"),
     quiet = TRUE
 ) {
-  method            <- match.arg(method)
+  method  <- match.arg(method)
   output_layer_type <- match.arg(output_layer_type)
 
   # Basic checks
@@ -71,28 +71,28 @@ get_overlap_kernel <- function(
   # Combine
   # Define continuous "score" and theoretical min/max for scaling
   if (method == "product") {
-    score    <- x * y
-    s_min    <- 1
-    s_max    <- n_classes^2
+    score <- x * y
+    s_min <- 1
+    s_max <- n_classes^2
   } else if (method == "sum") {
-    score    <- x + y
-    s_min    <- 2
-    s_max    <- 2 * n_classes
+    score <- x + y
+    s_min <- 2
+    s_max <- 2 * n_classes
   } else if (method == "geom_mean") {
-    score    <- sqrt(x * y)
-    s_min    <- 1
-    s_max    <- n_classes
+    score <- sqrt(x * y)
+    s_min <- 1
+    s_max <- n_classes
   } else if (method == "max") {
-    score    <- terra::mosaic(x, y, fun = function(a, b) pmax(a, b, na.rm = TRUE))
-    s_min    <- 1
-    s_max    <- n_classes
+    score <- terra::mosaic(x, y, fun = function(a, b) pmax(a, b, na.rm = TRUE))
+    s_min <- 1
+    s_max <- n_classes
   }
 
   # Normalize to [0,1] using theoretical bounds, then reclass to out_classes bins
   norm <- (score - s_min) / (s_max - s_min)
 
   brks <- seq(0, 1, length.out = out_classes + 1)
-  mat  <- cbind(from = brks[-length(brks)], to = brks[-1], class = seq_len(out_classes))
+  mat <- cbind(from = brks[-length(brks)], to = brks[-1], class = seq_len(out_classes))
   result_reclass <- terra::classify(norm, rcl = mat, include.lowest = TRUE)
   names(result_reclass) <- "Rating"
   terra::crs(result_reclass) <- terra::crs(x)

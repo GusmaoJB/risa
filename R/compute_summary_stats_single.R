@@ -50,7 +50,6 @@ compute_summary_stats_single <- function(rr, total_risk_raw, total_class) {
     gE <- terra::global(E,  c("min","max","mean"), na.rm=TRUE)
     gC <- terra::global(C,  c("min","max","mean"), na.rm=TRUE)
     gR <- terra::global(Rr, c("min","max","mean"), na.rm=TRUE)
-
     fq <- terra::freq(Rc)
     cnt <- c(`0`=0,`1`=0,`2`=0,`3`=0)
     if (!is.null(fq) && nrow(fq)) {
@@ -60,13 +59,13 @@ compute_summary_stats_single <- function(rr, total_risk_raw, total_class) {
 
     data.frame(
       STRESSOR = st,
-      E_min  = as.numeric(gE[1,"min"]), E_max = as.numeric(gE[1,"max"]), E_mean = as.numeric(gE[1,"mean"]),
-      C_min  = as.numeric(gC[1,"min"]), C_max = as.numeric(gC[1,"max"]), C_mean = as.numeric(gC[1,"mean"]),
-      R_min  = as.numeric(gR[1,"min"]), R_max = as.numeric(gR[1,"max"]), R_mean = as.numeric(gR[1,"mean"]),
-      `R%high`   = if (tot) 100*cnt["3"]/tot else NA_real_,
+      E_min = as.numeric(gE[1,"min"]), E_max = as.numeric(gE[1,"max"]), E_mean = as.numeric(gE[1,"mean"]),
+      C_min = as.numeric(gC[1,"min"]), C_max = as.numeric(gC[1,"max"]), C_mean = as.numeric(gC[1,"mean"]),
+      R_min = as.numeric(gR[1,"min"]), R_max = as.numeric(gR[1,"max"]), R_mean = as.numeric(gR[1,"mean"]),
+      `R%high` = if (tot) 100*cnt["3"]/tot else NA_real_,
       `R%medium` = if (tot) 100*cnt["2"]/tot else NA_real_,
-      `R%low`    = if (tot) 100*cnt["1"]/tot else NA_real_,
-      `R%None`   = if (tot) 100*cnt["0"]/tot else NA_real_
+      `R%low` = if (tot) 100*cnt["1"]/tot else NA_real_,
+      `R%None` = if (tot) 100*cnt["0"]/tot else NA_real_
     )
   })
   per <- do.call(rbind, rows)

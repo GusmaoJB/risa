@@ -59,8 +59,8 @@ export_maps <- function(
     tryCatch(
       terra::writeRaster(
         r,
-        filename  = out_file,
-        filetype  = "GTiff",
+        filename = out_file,
+        filetype = "GTiff",
         overwrite = TRUE
       ),
       error = function(e) warning("Failed to write raster: ", out_file, " (", e$message, ")", call. = FALSE)
@@ -134,7 +134,7 @@ export_maps <- function(
     message("Zipping export folder to: ", zip_file)
     utils::zip(
       zipfile = zip_file,
-      files   = list.files(out_dir, full.names = TRUE, recursive = TRUE)
+      files = list.files(out_dir, full.names = TRUE, recursive = TRUE)
     )
   }
 

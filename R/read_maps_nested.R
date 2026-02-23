@@ -64,10 +64,10 @@ read_maps_nested <- function(dir_path) {
 
       obj <- switch(
         ext,
-        tif     = tryCatch(terra::rast(f), error = function(e) { warning("Failed to read raster: ", f, " (", e$message, ")"); NULL }),
-        tiff    = tryCatch(terra::rast(f), error = function(e) { warning("Failed to read raster: ", f, " (", e$message, ")"); NULL }),
-        shp     = tryCatch(sf::st_read(f, quiet = TRUE), error = function(e) { warning("Failed to read vector: ", f, " (", e$message, ")"); NULL }),
-        gpkg    = tryCatch(sf::st_read(f, quiet = TRUE), error = function(e) { warning("Failed to read vector: ", f, " (", e$message, ")"); NULL }),
+        tif = tryCatch(terra::rast(f), error = function(e) { warning("Failed to read raster: ", f, " (", e$message, ")"); NULL }),
+        tiff = tryCatch(terra::rast(f), error = function(e) { warning("Failed to read raster: ", f, " (", e$message, ")"); NULL }),
+        shp = tryCatch(sf::st_read(f, quiet = TRUE), error = function(e) { warning("Failed to read vector: ", f, " (", e$message, ")"); NULL }),
+        gpkg = tryCatch(sf::st_read(f, quiet = TRUE), error = function(e) { warning("Failed to read vector: ", f, " (", e$message, ")"); NULL }),
         geojson = tryCatch(sf::st_read(f, quiet = TRUE), error = function(e) { warning("Failed to read vector: ", f, " (", e$message, ")"); NULL }),
         { warning("Unsupported extension: ", ext, " for file ", f); NULL }
       )
@@ -77,6 +77,7 @@ read_maps_nested <- function(dir_path) {
 
     # subdirectories (not recursive here; recurse manually)
     subdirs <- list.dirs(d, full.names = TRUE, recursive = FALSE)
+
     # guard against weird entries
     if (length(subdirs)) {
       is_dir <- dir.exists(subdirs)
@@ -89,7 +90,7 @@ read_maps_nested <- function(dir_path) {
       if (nm %in% names(out)) {
         nm <- make.unique(c(names(out), nm))[length(names(out)) + 1L]
       }
-      out[[nm]] <- .read_dir(sd)  # <- correct recursive call
+      out[[nm]] <- .read_dir(sd)
     }
 
     out

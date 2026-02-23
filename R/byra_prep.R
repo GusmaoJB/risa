@@ -1,11 +1,11 @@
 #' Prepare Species–Stressor Spatial Input Maps for risa
 #'
 #' Preprocesses lists of species and stressor spatial layers (SpatRaster, sf/sfc,
-#' or SpatVector objects) for use in *risa* analyses.
+#' or SpatVector objects) for use in hra() and quick_byra() analyses.
 #' The function harmonizes coordinate reference systems (CRS), generates an
 #' area of interest (AOI) when none is supplied, scales/reclassifies variables,
-#' computes overlap maps, and outputs species/stressor distribution and kernel
-#' maps in a common projected CRS.
+#' computes overlap maps, and outputs species/stressor distribution maps in a
+#' common projected CRS.
 #'
 #' @param spp_maplist A list of species layers. Each element must be a
 #'   `SpatRaster`, `sf`, `sfc`, or `SpatVector` object. Names are auto-generated
@@ -13,11 +13,13 @@
 #' @param str_maplist A list of stressor layers. Same requirements as
 #'   `spp_maplist`. Names are auto-generated if missing.
 #' @param area Optional area of interest. May be:
-#'   - `NULL` (default) → AOI is built automatically from bounding boxes of
-#'     species and stressor data.
-#'   - A `bbox`,
-#'   - A `data.frame` convertible to a polygon (via `df_to_shp()`),
-#'   - An `sf`/`sfc` object.
+#' \itemize{
+#'    \item `NULL` (default): AOI is built automatically from bounding boxes of
+#'     species and stressor data;
+#'     \item A `bbox`;
+#'     \item A `data.frame` convertible to a polygon (via `df_to_shp()`);
+#'     \item An `sf`/`sfc` object.
+#' }
 #' @param pixel_size Not currently used internally. Reserved for future control
 #'   of raster resolution.
 #' @param dimyx A length-2 numeric vector giving output raster dimensions
@@ -37,26 +39,17 @@
 #'
 #' @details
 #' The function:
-#'
-#' 1. Validates that input layers are spatial (`SpatRaster`, `sf`, etc.).
-#' 2. Ensures all inputs share a CRS; if not, they are reprojected to the CRS of
+#' \enumerate{
+#'   \item Validates that input layers are spatial (`SpatRaster`, `sf`, etc.).
+#'  \item Ensures all inputs share a CRS; if not, they are reprojected to the CRS of
 #'    the AOI or the first species map.
-#' 3. If `area` is not provided, constructs an AOI by merging and buffering the
+#'  \item If `area` is not provided, constructs an AOI by merging and buffering the
 #'    extents of all rasters.
-#' 4. Applies scaling/reclassification to species and stressor layers.
-#' 5. Optionally computes species–stressor overlap maps with continuous or
+#'  \item Applies scaling/reclassification to species and stressor layers.
+#'  \item Optionally computes species–stressor overlap maps with continuous or
 #'    categorical kernels.
-#' 6. Derives or accepts a target **metric CRS** and reprojects all outputs.
-#'
-#' Helper functions used internally include:
-#' - `apply_scale()`
-#' - `scale_vars()`
-#' - `get_overlap_kernel()`
-#' - `align_to()`
-#' - `transform_to_metric()`
-#' - `df_to_shp()`
-#'
-#' These must be available in the namespace where `byra_prep()` is used.
+#'  \item Derives or accepts a target **metric CRS** and reprojects all outputs.
+#' }
 #'
 #' @return
 #' A list of class `"risaMaps"` with components:
@@ -290,8 +283,8 @@ byra_prep <- function(spp_maplist, str_maplist,
     exts <- lapply(
       rasters_to_unite,
       function(r) {
-        r_trim <- terra::trim(r) # drops NA-only borders
-        terra::ext(r_trim) # extent of non-NA area
+        r_trim <- terra::trim(r)
+        terra::ext(r_trim)
       }
     )
 
@@ -301,12 +294,10 @@ byra_prep <- function(spp_maplist, str_maplist,
     ymin_vals <- vapply(exts, terra::ymin, numeric(1))
     ymax_vals <- vapply(exts, terra::ymax, numeric(1))
 
-    e <- terra::ext(
-      min(xmin_vals),
-      max(xmax_vals),
-      min(ymin_vals),
-      max(ymax_vals)
-    )
+    e <- terra::ext(min(xmin_vals),
+                    max(xmax_vals),
+                    min(ymin_vals),
+                    max(ymax_vals))
 
     # Estimate buffer as 5% of the diagonal of the combined extent
     dx <- terra::xmax(e) - terra::xmin(e)
@@ -320,20 +311,16 @@ byra_prep <- function(spp_maplist, str_maplist,
       sf::st_crs(template)
     }
 
-    e_buf <- terra::ext(
-      terra::xmin(e) - buf,
-      terra::xmax(e) + buf,
-      terra::ymin(e) - buf,
-      terra::ymax(e) + buf
-    )
+    e_buf <- terra::ext(terra::xmin(e) - buf,
+                        terra::xmax(e) + buf,
+                        terra::ymin(e) - buf,
+                        terra::ymax(e) + buf)
 
     area_bbox <- sf::st_bbox(
-      c(
-        xmin = terra::xmin(e_buf),
+      c(xmin = terra::xmin(e_buf),
         ymin = terra::ymin(e_buf),
         xmax = terra::xmax(e_buf),
-        ymax = terra::ymax(e_buf)
-      ),
+        ymax = terra::ymax(e_buf)),
       crs = crs_template
     )
 
@@ -487,8 +474,7 @@ byra_prep <- function(spp_maplist, str_maplist,
     species_kernel_maps = spp_output,
     stressor_kernel_maps = str_output,
     overlap_maps = overlap_maps,
-    area_of_interest = area
-  )
+    area_of_interest = area)
 
   class(output) <- c("risaMaps", class(output))
 

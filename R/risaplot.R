@@ -1,9 +1,9 @@
 #' Plot RISA spatial outputs
 #'
-#' Generates publication-ready `ggplot2` maps from RISA output objects
+#' Generates `ggplot2` maps from RISA output objects
 #' (either `risaMaps` or `risaHRA` classes). It automatically detects whether
 #' the inputs are rasters (`SpatRaster`) or vector (`sf`) objects and
-#' produces a consistent set of plots for species, stressors, overlaps, and
+#' produces a consistent set of plots for species (or habitats), stressors, overlaps, and
 #' risk outputs.
 #'
 #' @param x An object of class `risaMaps` or `risaHRA`.
@@ -15,7 +15,7 @@
 #'     per-stressor risk layers and `area_of_interest`.
 #'
 #' @return
-#' A **list of `ggplot` objects**, typically including maps for species,
+#' A list of `ggplot` objects, typically including maps for species (or habitats),
 #' stressors, overlaps, and total risk (depending on input class).
 #'
 #' @section For `risaMaps` objects:
@@ -95,8 +95,7 @@
 #' }
 #'
 #' @seealso
-#' [risa::risaMaps()], [risa::risaHRA()], [ggplot2::geom_tile()],
-#' [ggplot2::geom_sf()], [vctrs::vec_rbind()]
+#' `risaMaps()`, `risaHRA()`
 #'
 #' @importFrom purrr map map_dfr map_lgl imap
 #' @importFrom vctrs vec_rbind
@@ -132,9 +131,9 @@ risaplot <- function(x) {
     stopifnot(!is.null(crs_like))
     bb <- st_bbox(
       c(xmin = min(xy_df$Longitude, na.rm = TRUE),
-        ymin = min(xy_df$Latitude,  na.rm = TRUE),
+        ymin = min(xy_df$Latitude, na.rm = TRUE),
         xmax = max(xy_df$Longitude, na.rm = TRUE),
-        ymax = max(xy_df$Latitude,  na.rm = TRUE)),
+        ymax = max(xy_df$Latitude, na.rm = TRUE)),
       crs = st_crs(crs_like)
     )
     geom_sf(data = st_as_sf(st_as_sfc(bb)),
@@ -144,6 +143,7 @@ risaplot <- function(x) {
   # Convert a raster list into a data.frame
   .rast_list_to_df <- function(r_list, object_name = "raster",
                                group_names = NULL, value_name = "value") {
+
     if (is.null(group_names)) group_names <- names(r_list)
 
     r_stack <- terra::rast(map(group_names, ~ r_list[[.x]][[object_name]]))
@@ -182,7 +182,7 @@ risaplot <- function(x) {
     st_list <- x$stressor_kernel_maps
     overlap_list <- x$overlap_maps
     species_names <- names(sp_list)
-    stressor_names<- names(st_list)
+    stressor_names <- names(st_list)
     aoi <- x$area_of_interest
 
     # raster mode
@@ -213,6 +213,7 @@ risaplot <- function(x) {
         ggtitle("Species-Stressor Overlaps")
 
       return(list(gg_spp, gg_stress, gg_overlap))
+
     } else {
       # shp mode
       spp_sf <- if (length(sp_list) == 1) sp_list[[1]]$shp else .join_shps(sp_list)
@@ -247,7 +248,7 @@ risaplot <- function(x) {
     spp_vecs <- unique(x$summary_stats$SPECIES)
     species_names <- spp_vecs[!spp_vecs %in% "ECOSYSTEM"]
 
-    # Prepare AOI layer lazily when needed
+    # Prepare AOI layer when needed
     aoi_layer <- NULL
 
     if (depth == 2) {

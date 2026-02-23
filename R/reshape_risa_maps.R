@@ -83,15 +83,15 @@ reshape_risa_maps <- function(risa_maps,
   `%||%` <- function(a, b) if (is.null(a)) b else a
 
   # Discover available keys
-  species_all   <- names(get2(risa_maps, c("overlap_maps"))) %||% character()
+  species_all <- names(get2(risa_maps, c("overlap_maps"))) %||% character()
   stressors_all <- names(get2(risa_maps, c("stressor_kernel_maps"))) %||% character()
   if (length(species_all) == 0L || length(stressors_all) == 0L) return(list())
 
   # Optional filters
-  species   <- if (is.null(only_species)) species_all else intersect(species_all, only_species)
+  species <- if (is.null(only_species)) species_all else intersect(species_all, only_species)
   stressors <- if (is.null(only_stressors)) stressors_all else intersect(stressors_all, only_stressors)
 
-  # Build output: species -> stressor -> {criteria_names[1], criteria_names[2]}
+  # Build output
   out <- setNames(lapply(species, function(sp) {
     per_sp <- lapply(stressors, function(st) {
       exposure <- get2(risa_maps, c("stressor_kernel_maps", st, "raster"))

@@ -43,14 +43,14 @@ create_area <- function(x,
 
   # Project to metric
   x_m <- transform_to_metric(x_sf, metric_crs = crs, quiet = quiet)
-  x_sf     <- x_m$shape
-  coords   <- x_m$coordinates
+  x_sf <- x_m$shape
+  coords <- x_m$coordinates
   crs_proj <- sf::st_crs(x_sf)
 
   # Use XY only (avoid L1/L2/Z/M columns)
   xy <- coords[, 1:2, drop = FALSE]
 
-  # Helper: build polygon from a set of corner points (close the ring)
+  # Helper: build polygon from a set of corner points
   make_poly <- function(mat_xy) {
     mat_xy <- as.matrix(mat_xy)
     if (!all(mat_xy[1, ] == mat_xy[nrow(mat_xy), ])) {
@@ -91,7 +91,7 @@ create_area <- function(x,
     hull_xy <- scale_about_centroid(hull_xy, scale_factor)
     return(make_poly(hull_xy))
 
-  } else { # area_type == "bbox"
+  } else {
     bb <- sf::st_bbox(x_sf)
     corners <- matrix(
       c(bb$xmin, bb$ymin,

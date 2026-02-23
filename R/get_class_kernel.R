@@ -111,8 +111,8 @@ get_class_kernel <- function(
     quiet = TRUE
 ) {
   output_layer_type <- match.arg(output_layer_type)
-  radius_method     <- match.arg(radius_method)
-  return_crs        <- match.arg(return_crs)
+  radius_method <- match.arg(radius_method)
+  return_crs <- match.arg(return_crs)
 
   # Normalize input to sf
   if (inherits(x, "sf")) {
@@ -141,8 +141,8 @@ get_class_kernel <- function(
 
   # Project both to the same metric CRS
   area_m <- transform_to_metric(area, quiet = quiet)
-  crs_m  <- sf::st_crs(area_m$shape)$epsg
-  x_m    <- transform_to_metric(x_sf, metric_crs = crs_m, quiet = quiet)
+  crs_m <- sf::st_crs(area_m$shape)$epsg
+  x_m <- transform_to_metric(x_sf, metric_crs = crs_m, quiet = quiet)
   coords <- x_m$coordinates[, 1:2, drop = FALSE]
   if (nrow(coords) == 0L) stop("No points available after preprocessing.")
   if (nrow(unique(coords)) == 1L && is.null(radius)) {
@@ -197,11 +197,11 @@ get_class_kernel <- function(
   # KDE
   kde <- spatstat.explore::density.ppp(
     X,
-    sigma   = radius,
+    sigma = radius,
     weights = weights,
-    dimyx   = dimyx,
-    at      = "pixels",
-    edge    = TRUE
+    dimyx = dimyx,
+    at = "pixels",
+    edge = TRUE
   )
 
   # Convert to SpatRaster, classify and mask to area
@@ -233,9 +233,9 @@ get_class_kernel <- function(
 
   # Return KDE results with details as attributes
   details <- list(
-    sigma   = radius,
-    method  = radius_method,
-    dimyx   = dimyx,
+    sigma = radius,
+    method = radius_method,
+    dimyx = dimyx,
     message = paste0("KDE estimated with sigma = ", radius,
                      " using method = ", radius_method,
                      " and grid = ", paste(dimyx, collapse = "x"))

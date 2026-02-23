@@ -25,9 +25,9 @@ merge_shp <- function(shp_list, group_size = NULL, output = c("sf_union","points
     stop("All elements of `shp_list` must be sf objects.")
   }
 
-  # --------- New default: union to a single sf geometry (for risa_prep) -------
+  # Union to a single sf geometry
   if (output == "sf_union") {
-    # Harmonize CRS to the first layer (safer than mixing)
+    # Harmonize CRS to the first layer
     crs0 <- sf::st_crs(shp_list[[1]])
     shp_list <- lapply(shp_list, function(s) {
       crsS <- sf::st_crs(s)
@@ -35,15 +35,15 @@ merge_shp <- function(shp_list, group_size = NULL, output = c("sf_union","points
       if (!same) sf::st_transform(s, crs0) else s
     })
 
-    # Union all geometries; handle single-element list
+    # Union all geometries and handle single-element list
     geoms <- lapply(shp_list, sf::st_geometry)
     geom_union <- if (length(geoms) == 1L) geoms[[1]] else Reduce(sf::st_union, geoms)
 
-    # Wrap back to sf (CRS preserved)
+    # Wrap back to sf
     return(sf::st_as_sf(geom_union))
   }
 
-  # Warn if CRSs differ; coordinates will be mixed as-is
+  # Checks if CRSs differ
   crs_keys <- vapply(shp_list, function(s) {
     crs <- sf::st_crs(s)
     if (!is.null(crs$epsg)) paste0("epsg:", crs$epsg) else if (!is.null(crs$wkt)) crs$wkt else "NA"
@@ -53,7 +53,7 @@ merge_shp <- function(shp_list, group_size = NULL, output = c("sf_union","points
   }
 
   out_list <- vector("list", length(shp_list))
-  nm_list  <- names(shp_list)
+  nm_list <- names(shp_list)
 
   for (i in seq_along(shp_list)) {
     shp <- shp_list[[i]]
@@ -117,7 +117,7 @@ df_to_shp <- function(df,
                       drop_na = TRUE,
                       quiet = TRUE) {
 
-  # Early return for sf
+  # Checks input
   if (inherits(df, "sf")) {
     if (!quiet) message("Input is already an 'sf' object; returning as-is.")
     return(df)
@@ -213,7 +213,6 @@ df_to_list <- function(df, group = NULL, drop_na_group = TRUE, ...) {
   if (inherits(df, "sf")) {
     sf_obj <- df
   } else if (is.data.frame(df)) {
-    # Default grouping for data.frame: 3rd column if not provided
     if (is.null(group) && ncol(df) >= 3L) group <- names(df)[3L]
     sf_obj <- df_to_shp(df, ...)
   } else {
@@ -229,7 +228,7 @@ df_to_list <- function(df, group = NULL, drop_na_group = TRUE, ...) {
 
   # Resolve group column name safely
   grp_name <- if (is.numeric(group)) names(sf_obj)[group] else group
-  sf_col   <- attr(sf_obj, "sf_column")
+  sf_col <- attr(sf_obj, "sf_column")
   if (!grp_name %in% names(sf_obj) || grp_name == sf_col) {
     stop("`group` must refer to a non-geometry column present in `df`/`sf`.")
   }

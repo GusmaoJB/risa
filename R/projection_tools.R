@@ -42,7 +42,6 @@ guess_crs <- function(shp, lon = NULL, lat = NULL, quiet = TRUE) {
     stop("Input must be an `sf` object or a data frame with lon/lat.")
   }
 
-  # Require at least one finite pair
   keep <- is.finite(coords[, 1]) & is.finite(coords[, 2])
   if (!any(keep)) {
     if (!quiet) message("Could not guess CRS: no finite coordinates found.")
@@ -124,7 +123,7 @@ transform_to_metric <- function(
   if (is_sf) {
     crs <- sf::st_crs(input_map)
   } else {
-    crs <- sf::st_crs(terra::crs(input_map))  # parse WKT/PROJ string into sf::crs
+    crs <- sf::st_crs(terra::crs(input_map))
   }
 
   # If CRS missing: try guessing for sf; fail for raster
@@ -143,7 +142,7 @@ transform_to_metric <- function(
     }
   }
 
-  # Geographic vs projected?
+  # Geographic vs projected
   if (is_sf) {
     is_geographic <- sf::st_is_longlat(sf::st_geometry(input_map))
   } else {
@@ -192,10 +191,10 @@ transform_to_metric <- function(
     center_pt <- sf::st_sfc(sf::st_point(c(cx, cy)), crs = crs)
     center_ll <- sf::st_transform(center_pt, 4326)
     ll <- sf::st_coordinates(center_ll)[1, ]
-    lon_center <- ((ll[1] + 180) %% 360) - 180  # wrap to [-180, 180]
+    lon_center <- ((ll[1] + 180) %% 360) - 180
     lat_center <- ll[2]
 
-    # bbox in lon/lat to check latitude span (robust with fallback)
+    # bbox in lon/lat to check latitude span
     lat_span <- tryCatch({
       bb_sfc <- sf::st_as_sfc(bb)
       bb_ll <- sf::st_transform(bb_sfc, 4326)
@@ -329,7 +328,7 @@ convert_to_decimal_degrees <- function(obj, method = "near", quiet = TRUE) {
       return(obj)
     }
 
-    if (!quiet) message(sprintf("Reprojecting raster → %s using '%s' resampling.", target_crs, method))
+    if (!quiet) message(sprintf("Reprojecting raster >> %s using '%s' resampling.", target_crs, method))
     return(terra::project(obj, target_crs, method = method))
   }
 
@@ -380,10 +379,10 @@ align_to <- function(src, template, categorical = TRUE, pixel_size = NULL) {
   # interpolation method
   m <- if (categorical) "near" else "bilinear"
 
-  # Convert sf/sfc source to SpatRaster (if needed)
+  # Convert sf/sfc source to SpatRaster
   if (inherits(src, c("sf", "sfc"))) {
     src_vect <- terra::vect(src)
-    m <- "near"  # sf: always categorical
+    m <- "near"
 
     # Determine target CRS from template
     if (inherits(template, "SpatRaster")) {
@@ -423,7 +422,7 @@ align_to <- function(src, template, categorical = TRUE, pixel_size = NULL) {
     src <- terra::rasterize(src_vect, r_template, field = field)
   }
 
-  # At this point, src *must* be a SpatRaster
+  # Checks if src is a SpatRaster
   if (!inherits(src, "SpatRaster")) {
     stop("align_to(): 'src' must be a 'SpatRaster' after conversion.")
   }
@@ -431,7 +430,7 @@ align_to <- function(src, template, categorical = TRUE, pixel_size = NULL) {
   # Handle template
   # Case 1: template is SpatRaster
   if (inherits(template, "SpatRaster")) {
-    # Only compare geometry when both are SpatRaster (they are)
+    # Only compare geometry when both are SpatRaster
     if (terra::compareGeom(src, template, stopOnError = FALSE)) {
       return(src)
     }

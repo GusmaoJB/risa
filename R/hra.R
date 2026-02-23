@@ -248,8 +248,8 @@ hra <- function(
       # Build numerators/denominators
       E_numer_const <- if (nrow(E_const)) sum(E_const$RATING / (E_const$DQ * E_const$WEIGHT)) else 0
       C_numer_const <- if (nrow(C_const)) sum(C_const$RATING / (C_const$DQ * C_const$WEIGHT)) else 0
-      E_numer_rast  <- sum_weighted(E_mapped)
-      C_numer_rast  <- sum_weighted(C_mapped)
+      E_numer_rast <- sum_weighted(E_mapped)
+      C_numer_rast <- sum_weighted(C_mapped)
       E_denom <- sum(1 / (E_df$DQ * E_df$WEIGHT))
       C_denom <- sum(1 / (C_df$DQ * C_df$WEIGHT))
 
@@ -318,10 +318,10 @@ hra <- function(
       )
 
       res[[stressor]] <- list(
-        E_criteria   = E_map,
-        C_criteria   = C_map,
+        E_criteria = E_map,
+        C_criteria = C_map,
         Risk_map_raw = risk_raw,
-        Risk_map     = risk_cls
+        Risk_map = risk_cls
       )
     }
 
@@ -356,7 +356,6 @@ hra <- function(
     class(res) <- c("risaHRA", class(res))
     res
   }
-
 
   # Dispatch
   if (depth == 2L) {

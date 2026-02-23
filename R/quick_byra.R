@@ -7,8 +7,12 @@
 #' allows rapid testing of different criteria tables, decay settings, and
 #' area-of-interest, returning the full HRA results and associated summary statistics.
 #'
-#' @param x Species (habitat) input: `sf`, data.frame of individual occurrences, or list of `sf`.
-#'   If a data.frame/`sf`, can be split into multiple layers via `group_x`.
+#' @param x Can be a `sf`, `data.frame`, or `risaMaps` object. If x input is a
+#'   If a `data.frame`/`sf`, it assumes Species (habitat) input: `sf`, data.frame
+#'   of individual occurrences, or list of `sf` with occurrence points.
+#'   If a `data.frame`/`sf`, can be split into multiple layers via `group_x`.
+#'   If a `risaMaps`, quick_byra will ignore input y and assume that all KDE maps
+#'   of species/habitats and stressors, as well as their overlaps, are stored in x.
 #' @param y Stressor input: `sf`, data.frame, or list of `sf`.
 #'   If a data.frame/`sf`, can be split into multiple layers via `group_y`.
 #' @param criteria A `data.frame` (formated after InVEST's HRA criteria input)
@@ -94,7 +98,8 @@
 #'            buffer_m = c(fishing = 5000))
 #' }
 #' @export
-quick_byra <- function(x, y,
+quick_byra <- function(x,
+                       y = NULL,
                        criteria,
                        area = NULL,
                        n_classes = 3,
@@ -128,34 +133,46 @@ quick_byra <- function(x, y,
   decay <- match.arg(decay)
   area_strategy <- match.arg(area_strategy)
   area_type <- match.arg(area_type)
+  input_maps <- NULL
 
-  # Generate Kernel Density and ditribution maps
-  input_maps <- risa_prep(x, y,
-                          area,
-                          n_classes,
-                          output_layer_type = "both",
-                          radius,
-                          radius_method,
-                          group_x,
-                          group_y,
-                          group_size_x,
-                          group_size_y,
-                          pixel_size,
-                          dimyx,
-                          exclude_lowest,
-                          lowest_prop,
-                          area_strategy,
-                          area_type,
-                          area_buffer_frac,
-                          return_crs,
-                          overlap_method,
-                          quiet)
-
-  # Reshape lists and criteria for HRA analysis
+  # Reshape criteria input for analysis
   criteria <- criteria_reshape(criteria)
   sample_crit <- criteria[[1]]
   crit_names <- unique(sample_crit[is.na(sample_crit$RATING),"ATTRIBUTES"])
 
+  # If x is a risaMaps object
+  if (inherits(x, "risaMaps")) {
+    if(!quiet) message("Input x is a risaMaps object.")
+    if(!is.null(y)){
+      if(!quiet) message("Input y is not null. Ignoring y object...")
+    }
+    input_maps <- x
+  } else {
+    # Generate Kernel Density and ditribution maps
+    }
+    input_maps <- risa_prep(x, y,
+                            area,
+                            n_classes,
+                            output_layer_type = "both",
+                            radius,
+                            radius_method,
+                            group_x,
+                            group_y,
+                            group_size_x,
+                            group_size_y,
+                            pixel_size,
+                            dimyx,
+                            exclude_lowest,
+                            lowest_prop,
+                            area_strategy,
+                            area_type,
+                            area_buffer_frac,
+                            return_crs,
+                            overlap_method,
+                            quiet)
+  }
+
+  # Reshape lists for HRA analysis
   raster_list <- reshape_risa_maps(input_maps, crit_names)
   species_distr <- input_maps$species_distributions
 

@@ -12,7 +12,6 @@
 #' @return A named `list` of `data.frame` objects, one per species. Each element has:
 #' `STRESSOR`, which is a factor of stressor names, and the original attribute columns for that species.
 #' @examples
-#' #test
 #' #Load example data
 #' path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
 #' df <- read.csv(path)
@@ -53,7 +52,7 @@ criteria_reshape <- function(x) {
   if (mid_cols < 3L) stop("Not enough species columns between the first column and the E/C column.")
   sp_n <- floor(mid_cols / 3L)
   sp_firsts <- 2L + 3L * (0:(sp_n - 1L))
-  sp_names  <- names(x)[sp_firsts]
+  sp_names <- names(x)[sp_firsts]
   if (is.null(sp_names) || any(!nzchar(sp_names))) sp_names <- paste0("sp", seq_len(sp_n))
 
   # Build STRESSOR labels from blank-separated blocks in col 1
@@ -72,7 +71,7 @@ criteria_reshape <- function(x) {
     out
   }
 
-  header_idx  <- integer(0)
+  header_idx <- integer(0)
   header_name <- character(0)
 
   for (b in blank_idx) {
@@ -83,7 +82,7 @@ criteria_reshape <- function(x) {
     # Skip ONLY section titles; DO NOT skip E/C-labeled stressor header rows
     while (j <= n && is_section_title(lab[j])) j <- j + 1L
     if (j <= n && !is_blank[j]) {
-      header_idx  <- c(header_idx, j)
+      header_idx <- c(header_idx, j)
       header_name <- c(header_name, lab[j])
     }
   }
@@ -116,8 +115,8 @@ criteria_reshape <- function(x) {
 
   for (i in seq_len(sp_n)) {
     start <- 2L + 3L * (i - 1L)
-    cols  <- c(1L, start:(start + 2L), crit_col)
-    sub   <- x[, cols, drop = FALSE]
+    cols <- c(1L, start:(start + 2L), crit_col)
+    sub <- x[, cols, drop = FALSE]
 
     names(sub) <- c("ATTRIBUTES","RATING","DQ","WEIGHT","E/C")
     r1 <- as.character(sub[1L, , drop = TRUE])
@@ -146,7 +145,7 @@ criteria_reshape <- function(x) {
 
     suppressWarnings({
       df$RATING <- as.integer(df$RATING)
-      df$DQ     <- as.integer(df$DQ)
+      df$DQ <- as.integer(df$DQ)
       df$WEIGHT <- as.integer(df$WEIGHT)
     })
 

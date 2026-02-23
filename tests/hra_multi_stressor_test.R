@@ -86,7 +86,8 @@ risaplot(output)
 input_maps <- risa_prep(spp_df, str_df)
 input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
 
-
+test2 <- quick_byra2(risa_maps, criteria = df)
+risaplot(test2)
 
 r_stack <- terra::rast(input_maps$species_distributions)
 

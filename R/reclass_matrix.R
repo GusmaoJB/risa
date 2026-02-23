@@ -37,16 +37,16 @@ reclass_matrix <- function(raster, n_classes = 3, exclude_lowest = TRUE, lowest_
 
   # Lower break for the classed bins
   lower_break <- if (exclude_lowest) val_05 else min_val
-  if (lower_break > max_val) lower_break <- min_val  # guard weird cases
+  if (lower_break > max_val) lower_break <- min_val
 
   # Equal-width breaks -> n_classes bins
   breaks <- seq(lower_break, max_val, length.out = n_classes + 1)
 
   # Build bins: make from/to the same length (n_classes)
   from <- breaks[-length(breaks)]
-  to   <- breaks[-1]
+  to <- breaks[-1]
   to[length(to)] <- Inf  # last bin open-ended
-  cls  <- seq_len(n_classes)
+  cls <- seq_len(n_classes)
 
   mat <- cbind(from = from, to = to, class = cls)
 

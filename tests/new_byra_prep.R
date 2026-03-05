@@ -104,14 +104,14 @@
 #'
 #' @export
 byra_prep <- function(spp_maplist, str_maplist,
-                      area = NULL,
-                      pixel_size = NULL,
-                      dimyx = c(512, 512),
-                      reclass = c(1, 3),
-                      reclass_cat = FALSE,
-                      overlaps = TRUE,
-                      crs = NULL,
-                      quiet = TRUE) {
+                       area = NULL,
+                       pixel_size = NULL,
+                       dimyx = c(512, 512),
+                       reclass = c(1, 3),
+                       reclass_cat = FALSE,
+                       overlaps = TRUE,
+                       crs = NULL,
+                       quiet = TRUE) {
 
   # Preparing input
   spp_list <- spp_maplist
@@ -561,5 +561,3 @@ byra_prep <- function(spp_maplist, str_maplist,
   class(output) <- c("risaMaps", class(output))
   output
 }
-
-

@@ -24,6 +24,9 @@ crit_list <- criteria_reshape(df)
 input_maps <- risa_prep(spp_df, str_df)
 input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
 
+#export
+#risa::export_maps(input_maps, out_dir = "/home/jojo/Documents/pontal_projects/risa_example_maps")
+
 # test
 sp_sf <- input_maps$species_kernel_maps$species1$shp
 plot(sp_sf)

@@ -16,14 +16,14 @@ risaplot(x)
   per-stressor risk layers and `area_of_interest`.}
 }
 \value{
-A **list of `ggplot` objects**, typically including maps for species,
+A list of `ggplot` objects, typically including maps for species (or habitats),
 stressors, overlaps, and total risk (depending on input class).
 }
 \description{
-Generates publication-ready `ggplot2` maps from RISA output objects
+Generates `ggplot2` maps from RISA output objects
 (either `risaMaps` or `risaHRA` classes). It automatically detects whether
 the inputs are rasters (`SpatRaster`) or vector (`sf`) objects and
-produces a consistent set of plots for species, stressors, overlaps, and
+produces a consistent set of plots for species (or habitats), stressors, overlaps, and
 risk outputs.
 }
 \details{
@@ -110,6 +110,5 @@ patchwork::wrap_plots(hra_plots)
 
 }
 \seealso{
-[risa::risaMaps()], [risa::risaHRA()], [ggplot2::geom_tile()],
-[ggplot2::geom_sf()], [vctrs::vec_rbind()]
+`risaMaps()`, `risaHRA()`
 }

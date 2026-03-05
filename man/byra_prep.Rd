@@ -2,7 +2,7 @@
 % Please edit documentation in R/byra_prep.R
 \name{byra_prep}
 \alias{byra_prep}
-\title{Prepare Species–Stressor Spatial Input Maps for risa}
+\title{harmonizes input maps into a CRS, extent, origin, and resolution}
 \usage{
 byra_prep(
   spp_maplist,
@@ -18,89 +18,106 @@ byra_prep(
 )
 }
 \arguments{
-\item{spp_maplist}{A list of species layers. Each element must be a
-`SpatRaster`, `sf`, `sfc`, or `SpatVector` object. Names are auto-generated
-if missing.}
+\item{spp_maplist}{A list of species maps. Each element must be a
+`terra::SpatRaster`, `sf::sf`, `sf::sfc`, or `terra::SpatVector`.
+If unnamed, default names `"species_1"`, `"species_2"`, ... are assigned.}
 
-\item{str_maplist}{A list of stressor layers. Same requirements as
-`spp_maplist`. Names are auto-generated if missing.}
+\item{str_maplist}{A list of stressor maps. Each element must be a
+`terra::SpatRaster`, `sf::sf`, `sf::sfc`, or `terra::SpatVector`.
+If unnamed, default names `"stressor_1"`, `"stressor_2"`, ... are assigned.}
 
-\item{area}{Optional area of interest. May be:
-- `NULL` (default) → AOI is built automatically from bounding boxes of
-  species and stressor data.
-- A `bbox`,
-- A `data.frame` convertible to a polygon (via `df_to_shp()`),
-- An `sf`/`sfc` object.}
+\item{area}{Optional area of interest (AOI). Can be `NULL`, an `sf::bbox`,
+a `data.frame` (converted via `df_to_shp()`), or an `sf`/`sfc` object.
+If `NULL`, an AOI is created as a buffered bounding box encompassing all layers
+after alignment.}
 
-\item{pixel_size}{Not currently used internally. Reserved for future control
-of raster resolution.}
+\item{pixel_size}{Optional numeric pixel size (in template units). If `area`/template
+is vector-based and `pixel_size` is `NULL`/`NA`, the function will attempt to infer
+a suitable value from raster inputs or from `dimyx`.}
 
-\item{dimyx}{A length-2 numeric vector giving output raster dimensions
-(rows, columns). Currently passed only implicitly to downstream helpers.}
+\item{dimyx}{Integer vector of length 2 giving the target grid dimensions
+`(nrow, ncol)` used only when `pixel_size` must be inferred from a vector template.}
 
-\item{reclass}{Numeric vector used by `apply_scale()` to reclassify or scale
-species and stressor rasters. Default: `c(1, 3)`.}
+\item{reclass}{Integer vector of length 2 giving the minimum and maximum class values
+used by `apply_scale()`/`scale_vars()` to reclassify kernel maps (e.g. `c(1, 3)`).}
 
-\item{reclass_cat}{Logical. If `TRUE`, variables are treated as categorical
-and overlap is computed using class-based kernels. If `FALSE`, overlap is
-based on scaled continuous products. Default: `FALSE`.}
+\item{reclass_cat}{Logical; if `TRUE`, treats kernel layers as categorical and
+computes overlaps using `get_overlap_kernel()` with `n_classes = max(reclass)`.
+If `FALSE` (default), overlaps are computed as the product of scaled rasters and
+then re-binned with `scale_vars()`.}
 
-\item{overlaps}{Logical. Whether to compute species–stressor overlap maps.
-Default: `TRUE`.}
+\item{overlaps}{Logical; if `TRUE` (default) compute pairwise overlap maps for all
+species × stressor combinations.}
 
-\item{crs}{Optional target CRS for outputs. Must be interpretable by
-`sf::st_crs()` and **must be projected (metric)**. If `NULL`, a suitable
-projected CRS (e.g. UTM) is auto-selected when inputs are in long/lat.}
+\item{crs}{Optional target CRS for outputs. Anything understood by `sf::st_crs()`
+(e.g. `"EPSG:32722"`). Must be projected (metric), not lon/lat. If `NULL`, a metric
+CRS is auto-selected when inputs are geographic; otherwise the template CRS is used.}
 
-\item{quiet}{Logical. If `FALSE`, progress messages are printed. Default:
-`TRUE`.}
+\item{quiet}{Logical; if `FALSE`, prints progress messages and basic geometry checks.}
 }
 \value{
-A list of class `"risaMaps"` with components:
-
+An object of class `risaMaps` (a named list) with components:
 \describe{
-  \item{`species_distributions`}{List of binary species presence/absence rasters.}
-  \item{`stressor_distributions`}{List of binary stressor presence/absence rasters.}
-  \item{`species_kernel_maps`}{List of scaled/reclassified species rasters.}
-  \item{`stressor_kernel_maps`}{List of scaled/reclassified stressor rasters.}
-  \item{`overlap_maps`}{Nested list of species–stressor overlap rasters
-    (empty if `overlaps = FALSE`).}
-  \item{`area_of_interest`}{`sf` polygon defining the spatial AOI in the final
-    projected CRS.}
+  \item{species_distributions}{List of binary (`1`/`NA`) species distribution rasters.}
+  \item{stressor_distributions}{List of binary (`1`/`NA`) stressor distribution rasters.}
+  \item{species_kernel_maps}{List of scaled species kernel maps (rasters).}
+  \item{stressor_kernel_maps}{List of scaled stressor kernel maps (rasters).}
+  \item{overlap_maps}{Nested list of overlap maps `[species][stressor]` (possibly empty).}
+  \item{area_of_interest}{AOI as an `sf` object in the target CRS.}
 }
 }
 \description{
-Preprocesses lists of species and stressor spatial layers (SpatRaster, sf/sfc,
-or SpatVector objects) for use in *risa* analyses.
-The function harmonizes coordinate reference systems (CRS), generates an
-area of interest (AOI) when none is supplied, scales/reclassifies variables,
-computes overlap maps, and outputs species/stressor distribution and kernel
-maps in a common projected CRS.
+`byra_prep()` harmonizes (aligns) input species and stressor layers so they share a
+common coordinate reference system (CRS), extent, origin and resolution (pixel size),
+converting vector inputs (`sf`/`sfc`/`SpatVector`) to rasters on a single template grid.
+It then applies a kernel/scaling step (via `apply_scale()`), optionally computes
+pairwise overlap maps, and returns a structured object of class `risaMaps` ready to be
+used as input by the function `quick_byra()`.
 }
 \details{
-The function:
+The function accepts lists of maps for species and stressors. Each element may be a
+`SpatRaster`, `sf`, `sfc`, or `SpatVector`. If an AOI is provided
+via `area`, it is used as the template domain; otherwise the template is inferred from
+the first species layer and, later, an AOI (bounding box) is derived from the union of
+non-`NA` extents of all layers.
 
-1. Validates that input layers are spatial (`SpatRaster`, `sf`, etc.).
-2. Ensures all inputs share a CRS; if not, they are reprojected to the CRS of
-   the AOI or the first species map.
-3. If `area` is not provided, constructs an AOI by merging and buffering the
-   extents of all rasters.
-4. Applies scaling/reclassification to species and stressor layers.
-5. Optionally computes species–stressor overlap maps with continuous or
-   categorical kernels.
-6. Derives or accepts a target **metric CRS** and reprojects all outputs.
+When `area` (or the inferred template) is geographic (lon/lat), the function attempts
+to transform it to a projected (metric) CRS (via `transform_to_metric()`) before
+building the template grid. If `pixel_size` is not supplied and the template is a
+vector object, the function tries to infer a suitable pixel size from the resolution
+of any raster inputs in a matching CRS; otherwise it approximates pixel size from the
+AOI bounding box and the requested grid dimensions (`dimyx`).
 
-Helper functions used internally include:
-- `apply_scale()`
-- `scale_vars()`
-- `get_overlap_kernel()`
-- `align_to()`
-- `transform_to_metric()`
-- `df_to_shp()`
-
-These must be available in the namespace where `byra_prep()` is used.
+Vector layers are rasterized onto the template using `terra::rasterize()` (with
+`touches = TRUE`), while rasters are reprojected/resampled to the template with
+`terra::project()` using nearest-neighbour for categorical/integer data and bilinear
+for continuous data. After kernels and overlaps are computed, outputs are optionally
+forced to a user-supplied projected CRS (`crs`) while preserving a consistent grid.
 }
-\seealso{
-`apply_scale()`, `get_overlap_kernel()`, `align_to()`,
-`transform_to_metric()`
+\examples{
+\dontrun{
+library(terra)
+library(sf)
+
+# Example inputs (rasters or vectors)
+spp <- list(sp1 = rast("sp1.tif"), sp2 = rast("sp2.tif"))
+str <- list(fishery = rast("trawl.tif"))
+
+# Optional AOI
+aoi <- st_read("aoi.shp")
+
+out <- byra_prep(
+  spp_maplist = spp,
+  str_maplist = str,
+  area = aoi,
+  pixel_size = 100,
+  reclass = c(1, 3),
+  overlaps = TRUE,
+  quiet = FALSE
+)
+
+class(out)
+names(out)
+}
+
 }

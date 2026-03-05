@@ -1,4 +1,4 @@
-#' harmonizes input maps into a CRS, extent, origin, and resolution
+#' harmonizes input maps into a common CRS, extent, origin, and resolution
 #'
 #' @description
 #' `byra_prep()` harmonizes (aligns) input species and stressor layers so they share a

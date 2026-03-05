@@ -170,7 +170,6 @@ quick_byra <- function(x,
                             return_crs,
                             overlap_method,
                             quiet)
-  }
 
   # Reshape lists for HRA analysis
   raster_list <- reshape_risa_maps(input_maps, crit_names)

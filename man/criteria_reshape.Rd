@@ -23,7 +23,6 @@ into a list of data frames (one for each species).  It extracts and recycles str
 removes header/blank rows, adds a `STRESSOR` column.
 }
 \examples{
-#test
 #Load example data
 path <- system.file("extdata", "multi_species_criteria.csv", package = "risa")
 df <- read.csv(path)

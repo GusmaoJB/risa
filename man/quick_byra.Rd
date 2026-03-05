@@ -6,7 +6,7 @@
 \usage{
 quick_byra(
   x,
-  y,
+  y = NULL,
   criteria,
   area = NULL,
   n_classes = 3,
@@ -34,8 +34,12 @@ quick_byra(
 )
 }
 \arguments{
-\item{x}{Species (habitat) input: `sf`, data.frame of individual occurrences, or list of `sf`.
-If a data.frame/`sf`, can be split into multiple layers via `group_x`.}
+\item{x}{Can be a `sf`, `data.frame`, or `risaMaps` object. If x input is a
+If a `data.frame`/`sf`, it assumes Species (habitat) input: `sf`, data.frame
+of individual occurrences, or list of `sf` with occurrence points.
+If a `data.frame`/`sf`, can be split into multiple layers via `group_x`.
+If a `risaMaps`, quick_byra will ignore input y and assume that all KDE maps
+of species/habitats and stressors, as well as their overlaps, are stored in x.}
 
 \item{y}{Stressor input: `sf`, data.frame, or list of `sf`.
 If a data.frame/`sf`, can be split into multiple layers via `group_y`.}

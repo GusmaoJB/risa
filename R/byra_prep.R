@@ -117,7 +117,16 @@ byra_prep <- function(spp_maplist, str_maplist,
   spp_list <- spp_maplist
   str_list <- str_maplist
 
-  if (is.null(names(spp_list))) names(spp_list) <- paste0("species_", seq_along(spp_list))
+  if (is.null(names(spp_list))) {
+    if (!quiet) warning("spp_maplist has no names. Please provide a named list (e.g., list(Pontoporia = map1)).")
+    names(spp_list) <- paste0("species_", seq_along(spp_list))
+  }
+  if (is.null(names(str_list))) {
+    if (!quiet) warning("str_maplist has no names. Please provide a named list (e.g., list(Gillnet = map3)).")
+    names(spp_list) <- paste0("species_", seq_along(spp_list))
+  }
+
+
   if (is.null(names(str_list))) names(str_list) <- paste0("stressor_", seq_along(str_list))
 
   # Helpers

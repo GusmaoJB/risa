@@ -11,10 +11,6 @@ editor_options:
     wrap: 72
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 ## The *risa* package
 
 The **risa** package, which stands for RISk Assessment, was designed to
@@ -24,7 +20,7 @@ Services and Tradeoffs) toolkit developed by the Natural Capital Project
 (Arkema et al., 2014; Sharp et al., 2020).
 
 There are a entire suite of functions that were projected to automate
-the steps to apply the *ByRA* (Bycatch Risk Assessment) toolkit (Wilhelm
+the steps to apply the *ByRA* (Bycatch Risk Assessment) toolkit (Hines et al., 2020; Wilhelm
 et al., 2022). *ByRA* uses HRA methodology to quantify the spatial
 overlap between fisheries and marine megafauna and has been applied to
 assess bycatch risk for marine mammals.
@@ -48,57 +44,140 @@ repository, which can be assessed via the link:
 
 <https://github.com/GusmaoJB/risa/>
 
-The easiest way to install **risa** is via *devtools::install_github()*:
+The easiest way to install **risa** is using the *install_github()* function in the package 
+**devtools**. If you don't have it, install **devtools** and via *install.packages("devtools")* and then run the code below to install **risa**.
 
 ```{r message=FALSE, warning=FALSE, eval=FALSE}
-# install devtools
+# Load devtools
 library(devtools)
 
 # install the risa package
 devtools::install_github("GusmaoJB/risa")
+
+# Load the risa package
+library(risa)
 ```
 
-Since we depend on functions in the packages *terra* and *sf* to load and
-manipulate rasters and shapefiles, we need to load these packages to
-perform our examples. Also, let's keep our work files (rasters,
-shapefiles, dataframes) in a *data* folder inside our working
-directory. In this first example, let's suppose we have species and
-stressor distribuions as occurrence points in CSV files:
+## Performing ByRA
 
-```{r include=FALSE}
-setwd()
+Since we depend on functions in the packages *terra* and *sf* to load
+and manipulate rasters and shapefiles, we will load these packages to
+perform our examples. First, let's keep our work files (rasters,
+shapefiles, dataframes) in a *data* folder inside our working directory.
+In this first example, let's suppose we have species and stressor
+distribuions as occurrence points in CSV files:
+
+```{r warning=FALSE, include=FALSE}
+library(risa)
+spp_df <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/species_distr.csv")
+str_df <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/stressor_distr.csv")
+criteria <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/criteria.csv")
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+# Load important packages
 library(sf)
 library(terra)
 
-#spp_df <- read.csv("data\species.csv")
-#str_df <- read.csv("data\stressor.csv")
-
-#head(spp_df)
-#head(str_df)
+# Loading species and stressor data
+spp_df <- read.csv("data/species_distr.csv")
+str_df <- read.csv("data/stressor_distr.csv")
 ```
 
-This is an R Markdown document. Markdown is a simple formatting syntax
-for authoring HTML, PDF, and MS Word documents. For more details on
-using R Markdown see <http://rmarkdown.rstudio.com>.
+Then we have a dataframe describing the occurrences of different
+species:
 
-When you click the **Knit** button a document will be generated that
-includes both content as well as the output of any embedded R code
-chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+# Check the first rows
+head(spp_df)
 ```
 
-## Including Plots
+And a data.frame with similar structure for stressors:
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+# Check the first rows
+head(str_df)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to
-prevent printing of the R code that generated the plot.
+All we need now is to load the criteria table. This table compiles the key information required for the analysis, including exposure ratings of each species (or habitat) to specific stressors, consequence ratings of those interactions, and the corresponding weights used in risk estimation and data quality assessment.
+
+Since we are working within the **ByRA** framework, we will use the criteria table specifically designed for this purpose, following the approach described in Hines et al. (2020).
+
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+# Load criteria data
+criteria <- read.csv("data/criteria.csv")
+
+# Check the first rows
+head(criteria)
+```
+
+```{r echo=FALSE, warning=FALSE}
+head(criteria)
+```
+
+Now we already have everything we need to run our first ByRA!
+
+Let’s start with a very simple example, where we just want a quick assessment of bycatch risk for two megafaunal species exposed to two different fishing gears. Since this is a first try, we will keep things straightforward and rely on the default behavior of the quick_byra() function.
+
+This means we will not worry (yet) about the details behind how kernel density estimates for species and stressors are constructed, or how the HRA model is calculated. The default settings handle all of that for us, using conservative assumptions and standard data preparation protocols typically recommended for ByRA analyses.
+
+We can always refine and tweak both the data prep and the HRA model later—so for now, let’s start simple and see what we get.
+
+```{r}
+byra1 <- quick_byra(spp_df, str_df, criteria)
+```
+
+And that is it! All the results we want, including the maps and statistics of risk estimates 
+are stored in *byra1*. If we check it out, we will find this:
+
+```{r}
+names(byra1)
+```
+
+Which means:
+
+- **Dolphin and Turtle:** Partial results (risk estimates) for each species (can be just one or more!). This is a list containing maps of the Exposure and Consequence components of the risk assessment, as well as overall risk estimates for each individual stressor and their combined effects. It also includes a table with summary statistics for these estimates.
+
+- **ecosys_risk_raw:** A `SpatRaster` map of the raw ecosystem risk estimates, representing the combined risk across all species considered in the assessment (Dolphin and Turtle).
+
+- **ecosys_risk_classified:** A `SpatRaster` map of reclassified ecosystem risk estimates. ByRA typically uses four risk categories: 0 = None, 1 = Low, 2 = Medium, and 3 = High.
+
+- **summary_stats:** A `data.frame` with summary statistics of risk estimates at both the ecosystem and species levels. It includes results for individual and combined stressor effects, as well as minimum, maximum, and mean values of Exposure, Consequence, and risk estimates, in addition to the relative area of each risk category.
+
+- **kde_maps:** A list containing all kernel density estimate maps for each species and stressor, as well as maps of overlap for each species–stressor pair.
+
+- **area_of_interest:** An `sf` vector object representing the polygon that defines the area of interest for the ByRA analysis. If not provided by the user, it is estimated by default based on the spatial distribution of the stressors.
+
+First, let's check the summary stats!
+
+```{r}
+byra1$summary_stats
+```
+
+Now let’s visualize the main results using the *risaplot()* function. Since we are working with multiple species and stressors, the function will generate six plots.
+
+The first two plots show the risk estimates (raw and reclassified) for each species, considering the isolated effect of each stressor. Plots 3 and 4 display the risk estimates (raw and reclassified) for each species when all stressors are combined. Finally, plots 5 and 6 present the ecosystem-level risk estimates (raw and reclassified), derived from the combined risk across all species.
+
+```{r}
+risaplot(byra1)
+```
+
+We can also visualize the maps that were considered for the risk estimates (KDE maps and their overlaps) using *risaplot()* applied to the *byra1$kde_maps* object. This will generate three plots: the first shows the KDE maps for each species, the second displays the KDE maps for each stressor, and the third presents the (reclassified) overlaps between each species–stressor pair.
+
+```{r}
+risaplot(byra1$kde_maps)
+```
+
+
+
+
+
+
+
+
+## References
+
+Hines, EM, Johnson, A., Ponnampalam, L., Peter, C., Junchompoo, C., Vu, L., 
+Thien, H., Caillat, M., and Verutes, G. (2020) Getting to the Bottom of Bycatch: 
+A GIS-based toolbox to assess the risk of marine mammal bycatch. Endangered Species Research 
+42:37-57 DOI: https://doi.org/10.3354/esr01037

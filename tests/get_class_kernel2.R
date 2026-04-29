@@ -1,11 +1,181 @@
-get_class_kernel2 <- function(
+#' Create reclassified or rescaled KDE hotspot maps
+#'
+#' @description
+#' Creates kernel density estimation (KDE) maps from point data and converts the
+#' resulting probability surface into either categorical classes or a continuous
+#' rescaled rating. The input can be an `sf` point object or a `data.frame` whose
+#' first two columns contain numeric coordinates. The output can be returned as
+#' polygons, as a raster, or as both.
+#'
+#' @details
+#' This function estimates a two-dimensional kernel density surface using
+#' [spatstat.explore::density.ppp()]. Input points are first converted to an
+#' `sf` object when necessary and projected to a metric coordinate reference
+#' system so that the KDE bandwidth, grid resolution, and optional pixel size are
+#' expressed in projected map units, usually meters.
+#'
+#' If an `area` is supplied, it is used to define the observation window for the
+#' point pattern. The resulting KDE raster is then masked to this area. If
+#' `area = NULL`, the function creates an observation-based rectangular window
+#' from the coordinate range of the input points. In this case, the KDE is not
+#' cropped or masked, and the window is expanded using a buffer based on the
+#' estimated or supplied bandwidth.
+#'
+#' The KDE bandwidth is controlled by the `radius` argument. If `radius` is
+#' supplied, this value is used directly as the kernel bandwidth (`sigma`). If
+#' `radius = NULL`, the bandwidth is estimated automatically using one of the
+#' methods selected in `radius_method`:
+#'
+#' \describe{
+#'   \item{`"nndist"`}{
+#'   Uses the mean nearest-neighbour distance among points, multiplied by 1.5.
+#'   This is a simple local-spacing rule that tends to produce bandwidths
+#'   related to the observed point distribution.
+#'   }
+#'
+#'   \item{`"nrd"`}{
+#'   Uses a normal-reference-style rule based on the pooled standard deviation
+#'   of the x and y coordinates, multiplied by \eqn{n^{-1/6}}, where \eqn{n}
+#'   is the number of observations. This method can produce relatively smooth
+#'   KDE surfaces when points are widely dispersed.
+#'   }
+#'
+#'   \item{`"std_distance_scaled"`}{
+#'   Uses the standard distance of the points around their mean center, scaled
+#'   by \eqn{(2 / (3n))^{1/4}}, where \eqn{n} is the number of observations.
+#'   This provides a bandwidth based on the spatial dispersion of the point
+#'   cloud while reducing the bandwidth as sample size increases.
+#'   }
+#'
+#'   \item{`"ppl"`}{
+#'   Uses the likelihood cross-validation bandwidth selected by
+#'   [spatstat.explore::bw.ppl()]. This method estimates the bandwidth from
+#'   the point pattern using a point-process likelihood criterion.
+#'   }
+#'
+#'   \item{`"fixed"`}{
+#'   Requires the user to supply a numeric value to `radius`. This option is
+#'   useful when a fixed, externally defined bandwidth should be used.
+#'   }
+#' }
+#'
+#' The KDE surface can be converted into categorical classes or into a continuous
+#' rating. When `continuous = FALSE`, KDE values are reclassified into
+#' `n_classes` ordered classes. By default, the lowest KDE values can be excluded
+#' using `exclude_lowest = TRUE` and `lowest_prop = 0.05`, which removes the
+#' lowest proportion of KDE values before assigning classes. When
+#' `continuous = TRUE`, KDE values are rescaled to a continuous range from
+#' `output_min` to `n_classes`, using the same lower threshold defined by the
+#' reclassification step.
+#'
+#' If `group_size` is provided, the corresponding numeric column in `x` is used
+#' as weights in the KDE estimation. This allows observations to contribute
+#' differently to the estimated density surface, for example when each point
+#' represents a group of individuals.
+#'
+#' @param x An `sf` point object or a `data.frame`/`tibble` containing point
+#'   coordinates. If a `data.frame` is supplied, the first two columns must be
+#'   numeric coordinate columns.
+#' @param area Optional spatial object used to define the KDE observation window
+#'   and mask the final output. Can be `NULL`, an `sf` object, a `bbox`, or a
+#'   `data.frame` that can be converted to an `sf` object. If `NULL`, an
+#'   observation-based rectangular window is created and the output is not
+#'   cropped or masked.
+#' @param n_classes Integer. Number of output classes or the maximum value of
+#'   the continuous rating scale. Default is `3`.
+#' @param output_min Numeric or `NULL`. Minimum value used when
+#'   `continuous = TRUE`. If `NULL`, defaults to `1`.
+#' @param output_layer_type Character. Type of output layer to return. Options
+#'   are `"shp"` for polygons, `"raster"` for a `SpatRaster`, or `"both"` for
+#'   a list containing both outputs.
+#' @param radius Numeric or `NULL`. KDE bandwidth, passed as `sigma` to
+#'   [spatstat.explore::density.ppp()]. The value must be a single positive
+#'   number in projected units. If `NULL`, the bandwidth is estimated using
+#'   `radius_method`.
+#' @param radius_method Character. Method used to estimate `radius` when
+#'   `radius = NULL`. Options are `"nndist"`, `"nrd"`,
+#'   `"std_distance_scaled"`, `"ppl"`, and `"fixed"`. See Details.
+#' @param group_size Character or `NULL`. Name of a numeric column in `x` to use
+#'   as weights in the KDE estimation. If `NULL`, all points receive equal
+#'   weight.
+#' @param pixel_size Numeric or `NULL`. Desired raster pixel size in projected
+#'   units. If supplied, it is used to derive the KDE grid dimensions from the
+#'   observation window. If `NULL`, `dimyx` is used.
+#' @param dimyx Numeric vector of length one or two. Grid dimensions passed to
+#'   [spatstat.explore::density.ppp()]. If length one, the same value is used
+#'   for both dimensions. Default is `c(512, 512)`.
+#' @param exclude_lowest Logical. If `TRUE`, the lowest KDE values are excluded
+#'   before reclassification or rescaling. Default is `TRUE`.
+#' @param lowest_prop Numeric. Proportion of the lowest KDE values to exclude
+#'   when `exclude_lowest = TRUE`. Default is `0.05`.
+#' @param continuous Logical. If `FALSE`, the KDE raster is reclassified into
+#'   ordered integer classes. If `TRUE`, KDE values are rescaled to a continuous
+#'   rating scale. Default is `FALSE`.
+#' @param input_crs Coordinate reference system to assign to `x` and/or `area`
+#'   when they do not already have one. Can be any value accepted by
+#'   [sf::st_crs()], such as an EPSG code.
+#' @param return_crs Character. CRS of the returned output. `"metric"` keeps the
+#'   projected metric CRS used for KDE estimation, while `"4326"` reprojects the
+#'   output to longitude/latitude WGS84.
+#' @param quiet Logical. If `FALSE`, progress messages are printed. Default is
+#'   `TRUE`.
+#'
+#' @return
+#' Depending on `output_layer_type`, returns:
+#' \describe{
+#'   \item{`"shp"`}{An `sf` polygon object containing the reclassified or
+#'   rescaled KDE ratings.}
+#'   \item{`"raster"`}{A `terra::SpatRaster` containing the reclassified or
+#'   rescaled KDE ratings.}
+#'   \item{`"both"`}{A list with two elements: `raster`, a `terra::SpatRaster`,
+#'   and `shp`, an `sf` polygon object.}
+#' }
+#'
+#' The returned object includes a `details` attribute with the estimated or
+#' supplied bandwidth, selected bandwidth method, grid dimensions, input and
+#' output CRS information, whether an area mask was used, the number of
+#' observations, and a short processing message.
+#'
+#' @examples
+#' \dontrun{
+#' # Example using a data.frame with coordinates in the first two columns
+#' kde_map <- get_class_kernel(
+#'   x = points_df,
+#'   area = study_area,
+#'   n_classes = 3,
+#'   radius_method = "std_distance_scaled",
+#'   output_layer_type = "both",
+#'   input_crs = 32722
+#' )
+#'
+#' # Example using a fixed bandwidth
+#' kde_fixed <- get_class_kernel(
+#'   x = points_sf,
+#'   area = study_area,
+#'   radius = 1000,
+#'   radius_method = "fixed",
+#'   output_layer_type = "raster"
+#' )
+#'
+#' # Example returning a continuous rating instead of classes
+#' kde_cont <- get_class_kernel(
+#'   x = points_sf,
+#'   area = study_area,
+#'   continuous = TRUE,
+#'   n_classes = 3,
+#'   output_min = 1
+#' )
+#' }
+#'
+#' @export
+get_class_kernel <- function(
     x,
     area = NULL,
     n_classes = 3,
     output_min = NULL,
     output_layer_type = c("shp", "raster", "both"),
     radius = NULL,
-    radius_method = c("nndist", "ppl", "fixed"),
+    radius_method = c("nndist", "nrd", "std_distance_scaled", "ppl", "fixed"),
     group_size = NULL,
     pixel_size = NULL,
     dimyx = c(512, 512),
@@ -245,7 +415,20 @@ get_class_kernel2 <- function(
 
   if (is.null(radius)) {
 
-    if (radius_method == "nndist") {
+    if (radius_method == "nrd") {
+
+      sd_xy <- sqrt(
+        (stats::var(coords[, 1], na.rm = TRUE) +
+           stats::var(coords[, 2], na.rm = TRUE)) / 2
+      )
+
+      radius <- sd_xy * nrow(coords)^(-1 / 6)
+
+      if (!quiet) {
+        message(sprintf("Auto bandwidth (nrd): sigma = %.3f", radius))
+      }
+
+    } else if (radius_method == "nndist") {
 
       nn <- spatstat.geom::nndist(X)
       radius <- 1.5 * mean(nn[is.finite(nn)], na.rm = TRUE)
@@ -263,6 +446,29 @@ get_class_kernel2 <- function(
         message(sprintf("Auto bandwidth (ppl): sigma = %.3f", radius))
       }
 
+    } else if (radius_method == "std_distance_scaled") {
+
+      mean_x <- mean(coords[, 1], na.rm = TRUE)
+      mean_y <- mean(coords[, 2], na.rm = TRUE)
+
+      std_dist <- sqrt(
+        mean(
+          (coords[, 1] - mean_x)^2 +
+            (coords[, 2] - mean_y)^2,
+          na.rm = TRUE
+        )
+      )
+
+      n <- nrow(coords)
+
+      radius <- ((2 / (3 * n))^(1 / 4)) * std_dist
+
+      if (!quiet) {
+        message(sprintf(
+          "Auto bandwidth (std_distance_scaled): sigma = %.3f",
+          radius
+        ))
+      }
     } else {
       stop("`radius` is NULL but `radius_method = 'fixed'. Supply a numeric radius.")
     }

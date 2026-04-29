@@ -1,6 +1,15 @@
 ############### Test Field ###############
 setwd("/home/jojo/Documents/pontal_projects/risa")
 library(risa)
+library(sf)
+
+# Loading real data
+avist_data <- read.csv("/home/jojo/Documents/pontal_projects/megacost/avistagens_atualizadas.csv")
+sg_data <- avist_data[avist_data$sp == "sg", c("Easting", "Northing", "tam_max", "id_grupo", "data", "area_code", "best_transect")]
+sg_data$tam_max <- as.numeric(sg_data$tam_max)
+sg_data_clean <- aggregate(. ~ data + area_code + best_transect, data=sg_data[,-4], FUN=mean)
+sg_data_clean$tam_max <- round(sg_data_clean$tam_max)
+sg_data_cleaner <- sg_data_clean[,c("Easting", "Northing", "tam_max")]
 
 # Creating test data
 set.seed(12)
@@ -13,14 +22,64 @@ str_df <- rbind(data.frame(long = rnorm(100, 0, 1.5),
                 data.frame(long = rnorm(50, 0, 3),
                            lat = rnorm(100, 0, 1.5), stressor = "stressor2"))
 
-test3 <- get_class_kernel2(spp_df[spp_df$species == "species1",], output_layer_type = "raster")
-test2 <- get_class_kernel2(spp_df[1:5,], output_layer_type = "raster", continuous = TRUE)
+test_data1 <- spp_df[spp_df$species == "species1",]
+test_data2 <- test_data1[1:30,]
+test_data3 <- test_data1[1:10,]
+test_data4 <- test_data1[1:5,]
 
-terra::plot(test3)
-plot(test2)
+# Function to plot KDE and points
+plot_kernel_points <- function(data,
+                               x_col = "long",
+                               y_col = "lat",
+                               input_crs = "EPSG:4326",
+                               point_col = "red",
+                               point_pch = 16,
+                               point_cex = 0.8,
+                               ...) {
 
-test_over <- get_overlap_kernel(test, test2)
-terra::plot(test_over)
+  kde_raster <- get_class_kernel2(
+    data,
+    input_crs = input_crs,
+    output_layer_type = "raster",
+    ...
+  )
+
+  pts <- terra::vect(
+    data,
+    geom = c(x_col, y_col),
+    crs = input_crs
+  )
+
+  pts_proj <- terra::project(
+    pts,
+    terra::crs(kde_raster)
+  )
+
+  terra::plot(kde_raster)
+
+  terra::plot(
+    pts_proj,
+    add = TRUE,
+    pch = point_pch,
+    col = point_col,
+    cex = point_cex
+  )
+
+  invisible(list(
+    raster = kde_raster,
+    points = pts_proj
+  ))
+}
+
+head(sg_data_cleaner)
+test <- get_class_kernel2(sg_data_cleaner, input_crs = "EPSG:32722", output_layer_type = "raster")
+test
+plot_kernel_points(data = sg_data_cleaner, x_col = "Easting",
+                   y_col = "Northing", input_crs = "EPSG:32722")
+
+head(sg_data_cleaner)
+test <- get_class_kernel2(sg_data_cleaner, input_crs = "EPSG:32722")
+plot(test)
 
 library(ggplot2)
 ggplot() +

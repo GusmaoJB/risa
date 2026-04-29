@@ -4,14 +4,35 @@ library(risa)
 
 # Creating test data
 set.seed(12)
-spp_df <- rbind(data.frame(long = rnorm(80, 0, 3),
-                           lat = rnorm(80, 0, 3), species = "species1"),
-                data.frame(long = rnorm(60, 0, 3),
-                           lat = rnorm(60, 0, 3), species = "species2"))
+spp_df <- rbind(data.frame(long = rnorm(80, 0, 1),
+                           lat = rnorm(80, 0, 1), species = "species1"),
+                data.frame(long = rnorm(60, 0, 1),
+                           lat = rnorm(60, 0, 1), species = "species2"))
 str_df <- rbind(data.frame(long = rnorm(100, 0, 1.5),
                            lat = rnorm(100, 0, 3), stressor = "stressor1"),
                 data.frame(long = rnorm(50, 0, 3),
                            lat = rnorm(100, 0, 1.5), stressor = "stressor2"))
+
+test <- get_class_kernel2(spp_df[spp_df$species == "species1",], output_layer_type = "raster")
+test2 <- get_class_kernel2(spp_df[1:5,], output_layer_type = "raster")
+
+terra::plot(test)
+plot(test2)
+
+test_over <- get_overlap_kernel(test, test2)
+terra::plot(test_over)
+
+library(ggplot2)
+ggplot() +
+  geom_point(data = spp_df[spp_df$species == "species1",],
+             aes(x=long, y=lat)) +
+  geom_point(data = spp_df[1:5,],
+             aes(x=long, y=lat), col="red")
+
+
+  plot(rbind.data.frame(spp_df[spp_df$species == "species1",1:2],
+                        spp_df[1:5,1:2]))
+
 
 
 #Load example data

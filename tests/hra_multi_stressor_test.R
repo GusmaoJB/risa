@@ -13,10 +13,10 @@ str_df <- rbind(data.frame(long = rnorm(100, 0, 1.5),
                 data.frame(long = rnorm(50, 0, 3),
                            lat = rnorm(100, 0, 1.5), stressor = "stressor2"))
 
-test <- get_class_kernel2(spp_df[spp_df$species == "species1",], output_layer_type = "raster")
-test2 <- get_class_kernel2(spp_df[1:5,], output_layer_type = "raster")
+test3 <- get_class_kernel2(spp_df[spp_df$species == "species1",], output_layer_type = "raster")
+test2 <- get_class_kernel2(spp_df[1:5,], output_layer_type = "raster", continuous = TRUE)
 
-terra::plot(test)
+terra::plot(test3)
 plot(test2)
 
 test_over <- get_overlap_kernel(test, test2)

@@ -2,6 +2,7 @@ get_class_kernel2 <- function(
     x,
     area = NULL,
     n_classes = 3,
+    output_min = NULL,
     output_layer_type = c("shp", "raster", "both"),
     radius = NULL,
     radius_method = c("nndist", "ppl", "fixed"),
@@ -10,6 +11,8 @@ get_class_kernel2 <- function(
     dimyx = c(512, 512),
     exclude_lowest = TRUE,
     lowest_prop = 0.05,
+    continuous = FALSE,
+    input_crs = NULL,
     return_crs = c("metric", "4326"),
     quiet = TRUE) {
 
@@ -17,19 +20,81 @@ get_class_kernel2 <- function(
   radius_method <- match.arg(radius_method)
   return_crs <- match.arg(return_crs)
 
+  # Helper: apply or check input CRS
+  apply_input_crs <- function(obj, input_crs = NULL, object_name = "object") {
+
+    if (is.null(input_crs)) {
+      return(obj)
+    }
+
+    input_crs_obj <- sf::st_crs(input_crs)
+
+    if (is.na(input_crs_obj)) {
+      stop("`input_crs` could not be interpreted as a valid CRS.")
+    }
+
+    current_crs <- sf::st_crs(obj)
+
+    if (is.na(current_crs)) {
+
+      if (!quiet) {
+        message(
+          "Assigning input CRS to `", object_name, "`: ",
+          input_crs_obj$input
+        )
+      }
+
+      obj <- sf::st_set_crs(obj, input_crs_obj)
+
+    } else if (current_crs != input_crs_obj) {
+
+      warning(
+        "`", object_name, "` already has a CRS different from `input_crs`. ",
+        "Ignoring argument `input_crs` ...",
+      )
+    }
+
+    obj
+  }
+
   # Normalize input to sf
   if (inherits(x, "sf")) {
+
     x_sf <- x
+    x_sf <- apply_input_crs(x_sf, input_crs, object_name = "x")
+
   } else if (inherits(x, c("data.frame", "tbl_df", "tbl"))) {
+
     if (ncol(x) < 2 || !all(vapply(x[, 1:2], is.numeric, logical(1)))) {
-      stop("For data.frame input, the first two columns must be numeric lon/lat.")
+      stop("For data.frame input, the first two columns must be numeric coordinates.")
     }
 
     if (!quiet) message("Converting input data.frame to sf...")
-    x_sf <- df_to_shp(x)
+
+    if (!is.null(input_crs)) {
+
+      x_sf <- sf::st_as_sf(
+        x,
+        coords = names(x)[1:2],
+        crs = input_crs,
+        remove = FALSE
+      )
+
+    } else {
+
+      x_sf <- df_to_shp(x)
+    }
 
   } else {
-    stop("`x` must be an sf object or a data.frame with lon/lat.")
+    stop("`x` must be an sf object or a data.frame with coordinate columns.")
+  }
+
+  if (is.na(sf::st_crs(x_sf))) {
+    stop(
+      "`x` has no CRS. Please provide `input_crs`, for example ",
+      "`input_crs = 4326` for longitude/latitude or ",
+      "`input_crs = 32722` for WGS 84 / UTM zone 22S."
+    )
   }
 
   # Helper: create observation-based rectangular window
@@ -58,7 +123,7 @@ get_class_kernel2 <- function(
     x_buffer_frac <- x_width * buffer_frac
     y_buffer_frac <- y_width * buffer_frac
 
-    # Handle absolute buffer in projected units (meters)
+    # Handle absolute buffer in projected units
     if (!is.null(buffer_dist)) {
       x_buffer <- max(x_buffer_frac, buffer_dist)
       y_buffer <- max(y_buffer_frac, buffer_dist)
@@ -75,33 +140,67 @@ get_class_kernel2 <- function(
 
   # Area handling and projection
   if (is.null(area)) {
+
     if (!quiet) {
       message(
-        "No area provided. KDE will use an observation-based window",
+        "No area provided. KDE will use an observation-based window ",
         "and will not be masked or cropped."
       )
     }
+
     x_m <- transform_to_metric(x_sf, quiet = quiet)
+
     crs_ref <- sf::st_crs(x_m$shape)
     coords <- x_m$coordinates[, 1:2, drop = FALSE]
+
     W <- make_obs_window(coords, buffer_frac = 0.5)
+
     use_area_mask <- FALSE
     area_m <- NULL
+
   } else {
+
     if (inherits(area, "bbox")) {
+
       area <- sf::st_as_sf(sf::st_as_sfc(area))
+
+      # bbox inherits CRS only if it had one originally
+      area <- apply_input_crs(area, input_crs, object_name = "area")
+
     } else if (inherits(area, "data.frame")) {
+
       area <- df_to_shp(area)
-    } else if (!inherits(area, "sf")) {
+      area <- apply_input_crs(area, input_crs, object_name = "area")
+
+    } else if (inherits(area, "sf")) {
+
+      area <- apply_input_crs(area, input_crs, object_name = "area")
+
+    } else {
       stop("`area` must be NULL, bbox, data.frame, or sf.")
     }
 
+    if (is.na(sf::st_crs(area))) {
+      stop(
+        "`area` has no CRS. Please provide `input_crs` or assign a CRS to `area`."
+      )
+    }
+
     area_m <- transform_to_metric(area, quiet = quiet)
+
     crs_ref <- sf::st_crs(area_m$shape)
     crs_m <- crs_ref$epsg
-    x_m <- transform_to_metric(x_sf, metric_crs = crs_m, quiet = quiet)
+
+    x_m <- transform_to_metric(
+      x_sf,
+      metric_crs = crs_m,
+      quiet = quiet
+    )
+
     coords <- x_m$coordinates[, 1:2, drop = FALSE]
+
     W <- spatstat.geom::as.owin(area_m$shape)
+
     use_area_mask <- TRUE
   }
 
@@ -116,10 +215,11 @@ get_class_kernel2 <- function(
     )
   }
 
-  # Handling Weights
+  # Handling weights
   weights <- NULL
 
   if (!is.null(group_size)) {
+
     if (!group_size %in% names(x_m$shape)) {
       stop("`group_size` not found in `x`.")
     }
@@ -148,7 +248,7 @@ get_class_kernel2 <- function(
     if (radius_method == "nndist") {
 
       nn <- spatstat.geom::nndist(X)
-      radius <- 1.5 * stats::median(nn[is.finite(nn)], na.rm = TRUE)
+      radius <- 1.5 * mean(nn[is.finite(nn)], na.rm = TRUE)
 
       if (!quiet) {
         message(sprintf("Auto bandwidth (nndist): sigma = %.3f", radius))
@@ -208,7 +308,7 @@ get_class_kernel2 <- function(
   if (!is.null(pixel_size)) {
 
     if (!(is.numeric(pixel_size) && length(pixel_size) == 1L && pixel_size > 0)) {
-      stop("`pixel_size` must be a single positive number in meters.")
+      stop("`pixel_size` must be a single positive number in projected units.")
     }
 
     yr <- W$yrange
@@ -246,7 +346,7 @@ get_class_kernel2 <- function(
   r_kde <- terra::rast(kde)
   terra::crs(r_kde) <- crs_ref$wkt
 
-  # Reclassify
+  # Create reclassification matrix first
   re_mat <- reclass_matrix(
     r_kde,
     n_classes = n_classes,
@@ -254,11 +354,58 @@ get_class_kernel2 <- function(
     lowest_prop = lowest_prop
   )
 
-  r_cls <- terra::classify(
-    r_kde,
-    re_mat,
-    include.lowest = TRUE
-  )
+  # Reclassify or rescale KDE values
+  if (continuous) {
+
+    # Use the reclassification matrix to identify valid KDE classes
+    r_valid <- terra::classify(
+      r_kde,
+      re_mat,
+      include.lowest = TRUE
+    )
+
+    # Remove cells classified as NA by the reclassification matrix
+    r_kde[is.na(r_valid)] <- NA
+
+    # Get remaining KDE values
+    kde_vals <- terra::values(r_kde, mat = FALSE)
+    kde_vals <- kde_vals[is.finite(kde_vals)]
+
+    if (length(kde_vals) == 0L) {
+      stop("KDE raster has no finite values to rescale.")
+    }
+
+    # Use the reclassification matrix to define the lower threshold
+    valid_rows <- !is.na(re_mat[, 3])
+
+    lower_threshold <- min(re_mat[valid_rows, 1], na.rm = TRUE)
+    upper_threshold <- max(kde_vals, na.rm = TRUE)
+
+    if (upper_threshold <= lower_threshold) {
+      stop(
+        "Cannot rescale KDE values because the maximum KDE value is not ",
+        "greater than the lower threshold."
+      )
+    }
+
+    # Define output scale
+    output_min <- if (is.null(output_min)) 1 else output_min
+    output_max <- n_classes
+
+    # Rescale KDE values using the same lower threshold used for classification
+    r_cls <- ((r_kde - lower_threshold) /
+                (upper_threshold - lower_threshold)) *
+      (output_max - output_min) + output_min
+
+  } else {
+
+    # Use the same matrix directly for categorical reclassification
+    r_cls <- terra::classify(
+      r_kde,
+      re_mat,
+      include.lowest = TRUE
+    )
+  }
 
   # Crop/mask KDEs when an area is provided
   if (use_area_mask) {
@@ -269,6 +416,7 @@ get_class_kernel2 <- function(
 
   # Convert to polygons if needed
   if (output_layer_type != "raster") {
+
     v_cls <- sf::st_as_sf(
       terra::as.polygons(r_cls, dissolve = TRUE)
     )
@@ -280,7 +428,11 @@ get_class_kernel2 <- function(
   if (return_crs == "4326") {
 
     if (output_layer_type %in% c("raster", "both")) {
-      r_cls <- terra::project(r_cls, "EPSG:4326", method = "near")
+      r_cls <- terra::project(
+        r_cls,
+        "EPSG:4326",
+        method = ifelse(continuous, "bilinear", "near")
+      )
     }
 
     if (output_layer_type %in% c("shp", "both")) {
@@ -293,6 +445,8 @@ get_class_kernel2 <- function(
     sigma = radius,
     method = radius_method,
     dimyx = dimyx,
+    input_crs = sf::st_crs(x_sf)$input,
+    output_crs = sf::st_crs(crs_ref)$input,
     area_provided = use_area_mask,
     n_observations = nrow(coords),
     message = paste0(

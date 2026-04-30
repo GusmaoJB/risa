@@ -168,7 +168,7 @@
 #' }
 #'
 #' @export
-get_class_kernel <- function(
+get_class_kernel2 <- function(
     x,
     area = NULL,
     n_classes = 3,

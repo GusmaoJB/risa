@@ -29,13 +29,14 @@
 #' @importFrom sf st_as_sfc st_transform st_crs st_is_longlat st_bbox st_set_crs
 #' @importFrom terra project crs res
 #' @examples
-#' # add example here
+#' # I need to add an example here eventually
 #' @export
 risa_prep <- function(
     x, y,
     area = NULL,
     n_classes = 3,
     output_min = NULL,
+    continuous = FALSE,
     output_layer_type = c("both","shp","raster"),
     radius = NULL,
     radius_method = c("nndist", "nrd", "std_distance_scaled", "ppl", "fixed"),
@@ -83,6 +84,23 @@ risa_prep <- function(
       stop("Raster has rotation/shear; reproject/resample to a north-up grid.")
     }
     invisible(TRUE)
+  }
+
+  # Force all kernel outputs to have a $raster element
+  .as_raster_list_item <- function(obj) {
+    if (inherits(obj, "SpatRaster")) {
+      return(list(raster = obj))
+    }
+
+    if (is.list(obj) && "raster" %in% names(obj)) {
+      return(obj)
+    }
+
+    stop("Kernel output must be a SpatRaster or a list containing a `raster` element.")
+  }
+
+  .standardize_kernel_list <- function(lst) {
+    lapply(lst, .as_raster_list_item)
   }
 
   # Normalize inputs to sf lists
@@ -134,13 +152,17 @@ risa_prep <- function(
   }
 
   # Kernels builder (passes pixel_size forward)
+  # When continuous = TRUE, force output_layer_type to "raster"
+  kernel_output_type <- if (continuous) "raster" else output_layer_type
+
   build_kernels <- function(lst, group_size = NULL, ncls = n_classes) {
     lapply(lst, function(item) {
       get_class_kernel(
         item,
         area = if (return_crs == "metric") area_metric else area,
         n_classes = ncls,
-        output_layer_type = "both",
+        output_min = output_min,
+        output_layer_type = kernel_output_type,
         radius = radius,
         radius_method = radius_method,
         group_size = group_size,
@@ -148,6 +170,7 @@ risa_prep <- function(
         dimyx = dimyx,
         exclude_lowest = exclude_lowest,
         lowest_prop = lowest_prop,
+        continuous = continuous,
         return_crs = return_crs,
         quiet = quiet
       )
@@ -155,10 +178,16 @@ risa_prep <- function(
   }
 
   # Distributions (presence maps): 1 class; Kernels: n_classes
-  spp_distribution_list  <- build_kernels(spp_list, group_size = group_size_x, ncls = 1L)
-  str_distribution_list  <- build_kernels(str_list, group_size = group_size_y, ncls = 1L)
-  spp_kernel_list        <- build_kernels(spp_list, group_size = group_size_x, ncls = n_classes)
-  stressor_kernel_list   <- build_kernels(str_list, group_size = group_size_y, ncls = n_classes)
+  spp_distribution_list <- build_kernels(spp_list, group_size = group_size_x, ncls = 1L)
+  str_distribution_list <- build_kernels(str_list, group_size = group_size_y, ncls = 1L)
+  spp_kernel_list <- build_kernels(spp_list, group_size = group_size_x, ncls = n_classes)
+  stressor_kernel_list <- build_kernels(str_list, group_size = group_size_y, ncls = n_classes)
+
+  # Standardize lists when continuous = TRUE
+  spp_distribution_list <- .standardize_kernel_list(spp_distribution_list)
+  str_distribution_list <- .standardize_kernel_list(str_distribution_list)
+  spp_kernel_list <- .standardize_kernel_list(spp_kernel_list)
+  stressor_kernel_list <- .standardize_kernel_list(stressor_kernel_list)
 
   # AOI CRS for output (only transform AOI geometry for return)
   if (return_crs == "4326") {
@@ -169,25 +198,44 @@ risa_prep <- function(
 
   # Overlap maps
   if (!quiet) message("Generating overlap maps...")
+
+  # Force overlap output type to raster when continuous = TRUE
+  overlap_output_type <- if (continuous) "raster" else output_layer_type
+
   overlap_maps_list <- lapply(spp_kernel_list, function(sp) {
     lapply(stressor_kernel_list, function(st) {
+
+      sp_rast <- sp$raster
+      st_rast <- st$raster
+
       ol <- get_overlap_kernel(
-        sp$raster, st$raster,
+        sp_rast,
+        st_rast,
         n_classes = n_classes,
+        continuous = continuous,
+        output_min = output_min,
+        out_classes = n_classes,
         method = overlap_method,
-        output_layer_type = output_layer_type,
+        output_layer_type = overlap_output_type,
         quiet = quiet
       )
+
+      # Standardize overlap output structure
+      ol <- .as_raster_list_item(ol)
+
       if (return_crs == "4326") {
-        if (inherits(ol, "SpatRaster")) {
-          ol <- terra::project(ol, "EPSG:4326", method = "near")
-        } else if (inherits(ol, "sf")) {
-          ol <- sf::st_transform(ol, 4326)
-        } else if (is.list(ol) && all(c("raster","shp") %in% names(ol))) {
-          ol$raster <- terra::project(ol$raster, "EPSG:4326", method = "near")
-          ol$shp    <- sf::st_transform(ol$shp, 4326)
+
+        ol$raster <- terra::project(
+          ol$raster,
+          "EPSG:4326",
+          method = "near"
+        )
+
+        if ("shp" %in% names(ol)) {
+          ol$shp <- sf::st_transform(ol$shp, 4326)
         }
       }
+
       ol
     })
   })
@@ -214,26 +262,42 @@ risa_prep <- function(
 
     template <- .make_template(area_metric, crs_metric_wkt, pixel_size)
 
-    # regrid distributions / kernels
+    # Regrid distributions / kernels
     for (nm in names(spp_distribution_list)) {
-      spp_distribution_list[[nm]]$raster <- .regrid_to_template(spp_distribution_list[[nm]]$raster, template)
+      spp_distribution_list[[nm]]$raster <- .regrid_to_template(
+        spp_distribution_list[[nm]]$raster,
+        template
+      )
     }
+
     for (nm in names(str_distribution_list)) {
-      str_distribution_list[[nm]]$raster <- .regrid_to_template(str_distribution_list[[nm]]$raster, template)
+      str_distribution_list[[nm]]$raster <- .regrid_to_template(
+        str_distribution_list[[nm]]$raster,
+        template
+      )
     }
+
     for (nm in names(spp_kernel_list)) {
-      spp_kernel_list[[nm]]$raster <- .regrid_to_template(spp_kernel_list[[nm]]$raster, template)
+      spp_kernel_list[[nm]]$raster <- .regrid_to_template(
+        spp_kernel_list[[nm]]$raster,
+        template
+      )
     }
+
     for (nm in names(stressor_kernel_list)) {
-      stressor_kernel_list[[nm]]$raster <- .regrid_to_template(stressor_kernel_list[[nm]]$raster, template)
+      stressor_kernel_list[[nm]]$raster <- .regrid_to_template(
+        stressor_kernel_list[[nm]]$raster,
+        template
+      )
     }
-    # overlaps (handle both SpatRaster and list with $raster)
-    for (i in names(overlap_maps_list)) for (j in names(overlap_maps_list[[i]])) {
-      ol <- overlap_maps_list[[i]][[j]]
-      if (inherits(ol, "SpatRaster")) {
-        overlap_maps_list[[i]][[j]] <- .regrid_to_template(ol, template)
-      } else if (is.list(ol) && "raster" %in% names(ol)) {
-        overlap_maps_list[[i]][[j]]$raster <- .regrid_to_template(ol$raster, template)
+
+    # Regrid overlaps
+    for (i in names(overlap_maps_list)) {
+      for (j in names(overlap_maps_list[[i]])) {
+        overlap_maps_list[[i]][[j]]$raster <- .regrid_to_template(
+          overlap_maps_list[[i]][[j]]$raster,
+          template
+        )
       }
     }
 
@@ -241,51 +305,80 @@ risa_prep <- function(
     .set_crs_if_missing <- function(r) {
       if (inherits(r, "SpatRaster")) {
         crs_str <- terra::crs(r)
+
         if (is.na(crs_str) || !nzchar(crs_str)) {
           terra::crs(r) <- crs_metric_wkt
         }
       }
+
       r
     }
 
     for (nm in names(spp_distribution_list)) {
-      spp_distribution_list[[nm]]$raster <- .set_crs_if_missing(spp_distribution_list[[nm]]$raster)
+      spp_distribution_list[[nm]]$raster <- .set_crs_if_missing(
+        spp_distribution_list[[nm]]$raster
+      )
     }
+
     for (nm in names(str_distribution_list)) {
-      str_distribution_list[[nm]]$raster <- .set_crs_if_missing(str_distribution_list[[nm]]$raster)
+      str_distribution_list[[nm]]$raster <- .set_crs_if_missing(
+        str_distribution_list[[nm]]$raster
+      )
     }
+
     for (nm in names(spp_kernel_list)) {
-      spp_kernel_list[[nm]]$raster <- .set_crs_if_missing(spp_kernel_list[[nm]]$raster)
+      spp_kernel_list[[nm]]$raster <- .set_crs_if_missing(
+        spp_kernel_list[[nm]]$raster
+      )
     }
+
     for (nm in names(stressor_kernel_list)) {
-      stressor_kernel_list[[nm]]$raster <- .set_crs_if_missing(stressor_kernel_list[[nm]]$raster)
+      stressor_kernel_list[[nm]]$raster <- .set_crs_if_missing(
+        stressor_kernel_list[[nm]]$raster
+      )
     }
-    for (i in names(overlap_maps_list)) for (j in names(overlap_maps_list[[i]])) {
-      ol <- overlap_maps_list[[i]][[j]]
-      if (inherits(ol, "SpatRaster")) {
-        overlap_maps_list[[i]][[j]] <- .set_crs_if_missing(ol)
-      } else if (is.list(ol) && "raster" %in% names(ol)) {
-        overlap_maps_list[[i]][[j]]$raster <- .set_crs_if_missing(ol$raster)
+
+    for (i in names(overlap_maps_list)) {
+      for (j in names(overlap_maps_list[[i]])) {
+        overlap_maps_list[[i]][[j]]$raster <- .set_crs_if_missing(
+          overlap_maps_list[[i]][[j]]$raster
+        )
       }
     }
 
-    # Enforce square + metric (final guard)
-    for (nm in names(spp_distribution_list)) .check_square_metric(spp_distribution_list[[nm]]$raster)
-    for (nm in names(str_distribution_list)) .check_square_metric(str_distribution_list[[nm]]$raster)
-    for (nm in names(spp_kernel_list)) .check_square_metric(spp_kernel_list[[nm]]$raster)
-    for (nm in names(stressor_kernel_list)) .check_square_metric(stressor_kernel_list[[nm]]$raster)
-    for (i in names(overlap_maps_list)) for (j in names(overlap_maps_list[[i]])) {
-      ol <- overlap_maps_list[[i]][[j]]
-      if (inherits(ol, "SpatRaster")) .check_square_metric(ol)
-      if (is.list(ol) && "raster" %in% names(ol)) .check_square_metric(ol$raster)
+    # Enforce square + metric
+    for (nm in names(spp_distribution_list)) {
+      .check_square_metric(spp_distribution_list[[nm]]$raster)
     }
 
-    # If overlaps must include rasters for HRA, enforce:
-    for (i in names(overlap_maps_list)) for (j in names(overlap_maps_list[[i]])) {
-      ol <- overlap_maps_list[[i]][[j]]
-      has_raster <- inherits(ol, "SpatRaster") || (is.list(ol) && "raster" %in% names(ol))
-      if (!has_raster && output_layer_type == "raster") {
-        stop("Overlap map missing raster output; set output_layer_type to include raster.")
+    for (nm in names(str_distribution_list)) {
+      .check_square_metric(str_distribution_list[[nm]]$raster)
+    }
+
+    for (nm in names(spp_kernel_list)) {
+      .check_square_metric(spp_kernel_list[[nm]]$raster)
+    }
+
+    for (nm in names(stressor_kernel_list)) {
+      .check_square_metric(stressor_kernel_list[[nm]]$raster)
+    }
+
+    for (i in names(overlap_maps_list)) {
+      for (j in names(overlap_maps_list[[i]])) {
+        .check_square_metric(overlap_maps_list[[i]][[j]]$raster)
+      }
+    }
+
+    # Ensure overlap maps include raster outputs
+    for (i in names(overlap_maps_list)) {
+      for (j in names(overlap_maps_list[[i]])) {
+        has_raster <- is.list(overlap_maps_list[[i]][[j]]) &&
+          "raster" %in% names(overlap_maps_list[[i]][[j]]) &&
+          inherits(overlap_maps_list[[i]][[j]]$raster, "SpatRaster")
+
+        if (!has_raster) {
+          stop("Overlap map missing raster output.")
+        }
       }
     }
   }

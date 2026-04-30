@@ -71,6 +71,51 @@ plot_kernel_points <- function(data,
   ))
 }
 
+sp_dat <- spp_df[spp_df$species == "species1",]
+st_dat <- str_df[str_df$stressor == "stressor1",]
+
+r1 <- get_class_kernel2(sp_dat, output_layer_type = "raster")
+r2 <- get_class_kernel2(st_dat, output_layer_type = "raster")
+
+terra::plot(r1)
+terra::plot(r2)
+
+plot_kernel_points(sp_dat)
+plot_kernel_points(st_dat)
+
+overlap <- get_overlap_kernel2(r1, r2, continuous = TRUE)
+
+cont_rast1 <- terra::rast(matrix(runif(100, 0, 100), 10, 10))
+cont_rast2 <- terra::rast(matrix(runif(100, 0, 50), 10, 10))
+cont_overlap <- get_overlap_kernel2(cont_rast1, cont_rast2,
+                                    continuous = TRUE,
+                                    n_classes = 5,
+                                    out_classes = 10,
+                                    output_min = 2)
+
+test <- risa_prep(spp_df, str_df)
+test2 <- risa_prep2(spp_df, str_df)
+
+
+
+terra::plot(test2$species_kernel_maps$species1$raster)
+terra::plot(test2$species_kernel_maps$species2$raster)
+
+terra::plot(test2$stressor_kernel_maps$stressor1$raster)
+terra::plot(test2$stressor_kernel_maps$stressor2$raster)
+
+terra::plot(test2$overlap_maps$species1$stressor1$raster)
+terra::plot(test2$overlap_maps$species1$stressor2$raster)
+
+terra::plot(test2$overlap_maps$species2$stressor1$raster)
+terra::plot(test2$overlap_maps$species2$stressor2$raster)
+
+
+test_byra <- quick_byra2(spp_df, str_df, df)
+terra::plot(test_byra$ecosys_risk_raw)
+terra::plot(test_byra$ecosys_risk_classified)
+
+
 head(sg_data_cleaner)
 test <- get_class_kernel2(sg_data_cleaner, input_crs = "EPSG:32722", output_layer_type = "raster")
 test

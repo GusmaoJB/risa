@@ -1,79 +1,6 @@
-#' Compute overlap hotspots from two reclassified or continuous rasters
-#'
-#' Combines two class-coded or continuous rasters (e.g., exposure & consequence) into an
-#' overlap/risk surface. For discrete inputs (default), values are reclassified to
-#' `out_classes` bins. For continuous inputs, the result is a continuous surface rescaled
-#' to a specified range. Inputs are assumed to have values in `1…n_classes` for discrete
-#' mode, or any positive continuous values for continuous mode (0 or negative values treated
-#' as background/NA).
-#'
-#' @param x,y Single-layer `terra::SpatRaster`. For discrete mode, values are class codes
-#'   in `1…n_classes`. For continuous mode, values can be any positive floats.
-#' @param n_classes Integer: number of classes in the inputs (default 3). For continuous
-#'   mode, this sets the normalization range for input values.
-#' @param continuous Logical: if `TRUE`, treats inputs as continuous rasters and returns a
-#'   continuous output raster. If `FALSE` (default), treats inputs as discrete class rasters.
-#' @param output_min Numeric or NULL: minimum value for continuous output scaling. If NULL
-#'   (default), uses 1. Only used when `continuous = TRUE`.
-#' @param out_classes Integer: number of classes in the discrete output (default = `n_classes`).
-#'   When `continuous = TRUE`, this sets the maximum value for output scaling.
-#' @param method Combination rule: `"product"` (default), `"sum"`, `"geom_mean"`, or `"max"`.
-#' @param resample_method Resampling method to align `y` to `x` when grids differ. For class
-#'   rasters, the default `"near"` preserves class labels.
-#' @param output_layer_type One of `"shp"`, `"raster"`, or `"both"`. Default `"shp"`.
-#'   Ignored when `continuous = TRUE` (always returns raster).
-#' @param quiet Logical; suppress informative messages. Default `TRUE`.
-#'
-#' @details
-#' The function handles CRS mismatches automatically by reprojecting `y` to match `x`.
-#' If both rasters lack a CRS, the function assumes they share the same projection.
-#' An error occurs if only one raster has a defined CRS.
-#'
-#' For **discrete mode** (`continuous = FALSE`):
-#' * Inputs must be integer class codes in the range `1…n_classes`
-#' * Output is classified into `out_classes` discrete bins
-#' * Can return raster, shapefile, or both
-#'
-#' For **continuous mode** (`continuous = TRUE`):
-#' * Inputs can be any positive continuous values
-#' * Inputs are normalized to `[1, n_classes]` before combination
-#' * Output is a continuous raster scaled to `[output_min (or 1), out_classes]`
-#' * Always returns a raster (ignores `output_layer_type`)
-#'
-#' @return
-#' * If `continuous = TRUE`: A `SpatRaster` with continuous values.
-#' * If `continuous = FALSE` and `output_layer_type = "raster"`: A `SpatRaster` with integer classes.
-#' * If `continuous = FALSE` and `output_layer_type = "shp"`: An `sf` polygon layer.
-#' * If `continuous = FALSE` and `output_layer_type = "both"`: A list with `raster` and `shp` elements.
-#'
-#' @importFrom terra same.crs compareGeom resample classify as.polygons global clump values mask crs project clamp
-#' @importFrom sf st_as_sf st_set_crs
-#'
-#' @examples
-#' # Discrete mode example
-#' species  <- data.frame(long = rnorm(80, 0, 10),  lat = rnorm(80, 0, 10))
-#' stressor <- data.frame(long = rnorm(100, 0, 10), lat = rnorm(100, 0, 10))
-#' kde_spe <- get_class_kernel(species,  output_layer_type = "raster")
-#' kde_str <- get_class_kernel(stressor, output_layer_type = "raster")
-#' # Ensure same grid (nearest to preserve class labels)
-#' kde_str <- terra::project(kde_str, kde_spe, method = "near")
-#' overlap <- get_overlap_kernel(kde_spe, kde_str, method = "product",
-#'                               output_layer_type = "raster")
-#' terra::plot(overlap)
-#'
-#' \dontrun{
-#' # Continuous mode example
-#' cont_rast1 <- terra::rast(matrix(runif(100, 0, 100), 10, 10))
-#' cont_rast2 <- terra::rast(matrix(runif(100, 0, 50), 10, 10))
-#' cont_overlap <- get_overlap_kernel(cont_rast1, cont_rast2,
-#'                                    continuous = TRUE,
-#'                                    n_classes = 5,
-#'                                    out_classes = 10,
-#'                                    output_min = 2)
-#' terra::plot(cont_overlap)
-#' }
-#' @export
-get_overlap_kernel <- function(
+library(risa)
+
+get_overlap_kernel2 <- function(
     x, y,
     n_classes = 3,
     continuous = FALSE,
@@ -102,7 +29,7 @@ get_overlap_kernel <- function(
   crs_y_known <- crs_y != ""
 
   if (!crs_x_known && !crs_y_known) {
-    message("Both input rasters do not have a known CRS. Assuming they have the same projection and CRS...")
+    message("Both input rasters do not have a known CRS. I am assuming they have the same projection and CRS.")
   } else if (!crs_x_known || !crs_y_known) {
     stop("One of the input rasters does not have a known CRS. Both must have known CRS, or both must have unknown CRS.")
   } else if (!terra::same.crs(x, y)) {

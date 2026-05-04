@@ -29,16 +29,27 @@
 #' If both rasters lack a CRS, the function assumes they share the same projection.
 #' An error occurs if only one raster has a defined CRS.
 #'
+#' The available combination rules are:
+#' \describe{
+#'   \item{`"product"`}{Multiplies the two rasters. For discrete inputs, scores range from 1 to `n_classes^2`.}
+#'   \item{`"sum"`}{Adds the two rasters. For discrete inputs, scores range from 2 to `2 * n_classes`.}
+#'   \item{`"geom_mean"`}{Computes the geometric mean, `sqrt(x * y)`.}
+#'   \item{`"max"`}{Uses the maximum value between `x` and `y` for each cell.}
+#' }
+#'
 #' For **discrete mode** (`continuous = FALSE`):
 #' * Inputs must be integer class codes in the range `1…n_classes`
 #' * Output is classified into `out_classes` discrete bins
-#' * Can return raster, shapefile, or both
+#' * Can return a `SpatRaster` raster, an `sf` polygon, or both
 #'
 #' For **continuous mode** (`continuous = TRUE`):
 #' * Inputs can be any positive continuous values
 #' * Inputs are normalized to `[1, n_classes]` before combination
 #' * Output is a continuous raster scaled to `[output_min (or 1), out_classes]`
 #' * Always returns a raster (ignores `output_layer_type`)
+#' * In continuous mode, if an input raster has a constant finite value (`min == max`),
+#' all finite cells are normalized to 1 to avoid division by zero. This treats rasters
+#' without internal variation as having the minimum normalized rating.
 #'
 #' @return
 #' * If `continuous = TRUE`: A `SpatRaster` with continuous values.
@@ -46,7 +57,7 @@
 #' * If `continuous = FALSE` and `output_layer_type = "shp"`: An `sf` polygon layer.
 #' * If `continuous = FALSE` and `output_layer_type = "both"`: A list with `raster` and `shp` elements.
 #'
-#' @importFrom terra same.crs compareGeom resample classify as.polygons global clump values mask crs project clamp
+#' @importFrom terra nlyr crs same.crs project compareGeom resample ifel global mosaic clamp classify as.polygons
 #' @importFrom sf st_as_sf st_set_crs
 #'
 #' @examples
@@ -102,12 +113,34 @@ get_overlap_kernel <- function(
   crs_y_known <- crs_y != ""
 
   if (!crs_x_known && !crs_y_known) {
-    message("Both input rasters do not have a known CRS. Assuming they have the same projection and CRS...")
+    if (!quiet) message("Both input rasters do not have a known CRS. Assuming they have the same projection and CRS...")
   } else if (!crs_x_known || !crs_y_known) {
     stop("One of the input rasters does not have a known CRS. Both must have known CRS, or both must have unknown CRS.")
   } else if (!terra::same.crs(x, y)) {
     if (!quiet) message("Reprojecting `y` to match CRS of `x`.")
     y <- terra::project(y, x)
+  }
+
+  # Helper for normalize rasters
+  .normalize_to_classes <- function(r, min_val, max_val, n_classes, raster_name) {
+
+    if (!is.finite(min_val) || !is.finite(max_val)) {
+      stop("`", raster_name, "` has no finite values to normalize.")
+    }
+
+    if (max_val == min_val) {
+
+      if (!quiet) {
+        message(
+          "`", raster_name, "` has a constant value. ",
+          "Normalizing all finite cells to 1."
+        )
+      }
+
+      return(terra::ifel(is.finite(r), 1, NA))
+    }
+
+    (r - min_val) / (max_val - min_val) * (n_classes - 1) + 1
   }
 
   # Align y to x grid if needed
@@ -119,8 +152,8 @@ get_overlap_kernel <- function(
   # Treat 0 and negative values
   if (continuous) {
     # For continuous data, keep all finite values, but set negatives to NA
-    x <- terra::ifel(x < 0, NA, x)
-    y <- terra::ifel(y < 0, NA, y)
+    x <- terra::ifel(x <= 0, NA, x)
+    y <- terra::ifel(y <= 0, NA, y)
 
     # Use actual min/max for normalization
     mmx <- terra::global(x, c("min","max"), na.rm = TRUE)
@@ -130,11 +163,22 @@ get_overlap_kernel <- function(
 
     # Normalize inputs to [1, n_classes] if they're not already in that range
     if (!quiet) message("Normalizing continuous inputs to [1, ", n_classes, "] range.")
-    x <- (x - minx) / (maxx - minx) * (n_classes - 1) + 1
-    y <- (y - miny) / (maxy - miny) * (n_classes - 1) + 1
+    x <- .normalize_to_classes(
+      r = x,
+      min_val = minx,
+      max_val = maxx,
+      n_classes = n_classes,
+      raster_name = "x")
+
+    y <- .normalize_to_classes(
+      r = y,
+      min_val = miny,
+      max_val = maxy,
+      n_classes = n_classes,
+      raster_name = "y")
 
   } else {
-    # Original behavior for integer classes
+    # For integer classes
     x <- terra::ifel(x <= 0, NA, x)
     y <- terra::ifel(y <= 0, NA, y)
 

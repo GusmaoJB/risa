@@ -63,23 +63,34 @@
 #' @param decay \code{c("none","linear","exponential","polynomial_2nd","polynomial_3rd",
 #'   "complementary_decay_2nd","complementary_decay_3rd")}. See \emph{Decay functions}
 #'   above. Only the first three are provided by InVEST; the others are extensions.
-#' @param buffer_m Named numeric vector giving the buffer distance (meters) for each
-#'   stressor (e.g., \code{c(stressor1 = 500000, stressor2 = 1000000)}). Required
-#'   when \code{decay != "none"} for any stressor you wish to decay.
+#' @param buffer_m Named numeric vector giving the buffer distance, in meters,
+#'   for each stressor. When supplied, the selected `decay` function is applied
+#'   within this buffer. With `decay = "none"`, the buffer acts as a binary
+#'   distance threshold, equivalent to \eqn{I(d \le B)}. Required for any
+#'   stressor to which distance-based influence should be applied.
 #'
-#' @return An object of class \code{"risaHRA"}: a named list that, for each stressor,
-#'   contains \code{E_criteria}, \code{C_criteria}, \code{Risk_map_raw}, and
-#'   \code{Risk_map}; plus \code{total_raw}, \code{total}, and \code{summary_stats}
-#'   in single-species mode. In ecosystem mode, per-species results are returned,
-#'   along with \code{ecosys_risk_raw}, \code{ecosys_risk_classified}, and a
-#'   combined \code{summary_stats} table.
+#' @return An object of class \code{"risaHRA"}.
+#'
+#' In single-species mode, the returned object is a named list containing one
+#' element per stressor. Each stressor element contains \code{E_criteria},
+#' \code{C_criteria}, \code{Risk_map_raw}, and \code{Risk_map}. The object also
+#' includes \code{total_raw}, \code{total_reclassified},
+#' \code{total_hotspots_reclassified}, and \code{summary_stats}.
+#'
+#' In ecosystem mode, the returned object contains one single-species HRA result
+#' per species, plus \code{ecosys_risk_raw}, \code{ecosys_risk_classified}, and
+#' a combined \code{summary_stats} table.
 #'
 #' @details
-#' Rasters are aligned to the species grid using nearest-neighbor for categorical
-#' data and bilinear interpolation for continuous data. When a decay is used and
-#' a buffer is supplied for a given stressor, E and C rasters are attenuated by
-#' the chosen \eqn{f(d)} and an additional "general" decay is applied to overall
-#' stressor occurrence. Cells outside species presence are masked.
+#' Mapped criteria rasters are aligned to the species distribution grid as
+#' categorical/rating rasters, typically using nearest-neighbor resampling.
+#' Continuous risk rasters used in ecosystem aggregation are aligned as
+#' continuous rasters, typically using bilinear interpolation.
+#' When a buffer is supplied for a stressor, a distance-decay weight is computed
+#' from the union of that stressor's mapped attributes. This weight is used to
+#' extend/attenuate constant E and C criteria within the buffer, while mapped
+#' criteria retain their spatially explicit values. Final E and C maps are then
+#' masked to species presence.
 #'
 #' @importFrom terra compareGeom project mosaic mask ifel freq global app rast sprc cover
 #'

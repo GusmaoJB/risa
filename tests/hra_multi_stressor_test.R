@@ -17,10 +17,10 @@ spp_df <- rbind(data.frame(long = rnorm(80, 0, 1),
                            lat = rnorm(80, 0, 1), species = "species1"),
                 data.frame(long = rnorm(60, 0, 1),
                            lat = rnorm(60, 0, 1), species = "species2"))
-str_df <- rbind(data.frame(long = rnorm(100, 0, 1.5),
-                           lat = rnorm(100, 0, 3), stressor = "stressor1"),
-                data.frame(long = rnorm(50, 0, 3),
-                           lat = rnorm(100, 0, 1.5), stressor = "stressor2"))
+str_df <- rbind(data.frame(long = rnorm(100, 0, 0.8),
+                           lat = rnorm(100, 0, 1), stressor = "stressor1"),
+                data.frame(long = rnorm(50, 0, 1),
+                           lat = rnorm(100, 0, 0.7), stressor = "stressor2"))
 
 test_data1 <- spp_df[spp_df$species == "species1",]
 test_data2 <- test_data1[1:30,]
@@ -37,7 +37,7 @@ plot_kernel_points <- function(data,
                                point_cex = 0.8,
                                ...) {
 
-  kde_raster <- get_class_kernel2(
+  kde_raster <- get_class_kernel(
     data,
     input_crs = input_crs,
     output_layer_type = "raster",
@@ -74,8 +74,8 @@ plot_kernel_points <- function(data,
 sp_dat <- spp_df[spp_df$species == "species1",]
 st_dat <- str_df[str_df$stressor == "stressor1",]
 
-r1 <- get_class_kernel2(sp_dat, output_layer_type = "raster")
-r2 <- get_class_kernel2(st_dat, output_layer_type = "raster")
+r1 <- get_class_kernel(sp_dat, output_layer_type = "raster")
+r2 <- get_class_kernel(st_dat, output_layer_type = "raster")
 
 terra::plot(r1)
 terra::plot(r2)
@@ -83,60 +83,8 @@ terra::plot(r2)
 plot_kernel_points(sp_dat)
 plot_kernel_points(st_dat)
 
-overlap <- get_overlap_kernel2(r1, r2, continuous = TRUE)
-
-cont_rast1 <- terra::rast(matrix(runif(100, 0, 100), 10, 10))
-cont_rast2 <- terra::rast(matrix(runif(100, 0, 50), 10, 10))
-cont_overlap <- get_overlap_kernel2(cont_rast1, cont_rast2,
-                                    continuous = TRUE,
-                                    n_classes = 5,
-                                    out_classes = 10,
-                                    output_min = 2)
-
-test <- risa_prep(spp_df, str_df)
-test2 <- risa_prep2(spp_df, str_df)
-
-
-
-terra::plot(test2$species_kernel_maps$species1$raster)
-terra::plot(test2$species_kernel_maps$species2$raster)
-
-terra::plot(test2$stressor_kernel_maps$stressor1$raster)
-terra::plot(test2$stressor_kernel_maps$stressor2$raster)
-
-terra::plot(test2$overlap_maps$species1$stressor1$raster)
-terra::plot(test2$overlap_maps$species1$stressor2$raster)
-
-terra::plot(test2$overlap_maps$species2$stressor1$raster)
-terra::plot(test2$overlap_maps$species2$stressor2$raster)
-
-
-test_byra <- quick_byra2(spp_df, str_df, df)
-terra::plot(test_byra$ecosys_risk_raw)
-terra::plot(test_byra$ecosys_risk_classified)
-
-
-head(sg_data_cleaner)
-test <- get_class_kernel2(sg_data_cleaner, input_crs = "EPSG:32722", output_layer_type = "raster")
-test
-plot_kernel_points(data = sg_data_cleaner, x_col = "Easting",
-                   y_col = "Northing", input_crs = "EPSG:32722")
-
-head(sg_data_cleaner)
-test <- get_class_kernel2(sg_data_cleaner, input_crs = "EPSG:32722")
-plot(test)
-
-library(ggplot2)
-ggplot() +
-  geom_point(data = spp_df[spp_df$species == "species1",],
-             aes(x=long, y=lat)) +
-  geom_point(data = spp_df[1:5,],
-             aes(x=long, y=lat), col="red")
-
-
-  plot(rbind.data.frame(spp_df[spp_df$species == "species1",1:2],
-                        spp_df[1:5,1:2]))
-
+overlap <- get_overlap_kernel(r1, r2, continuous = TRUE)
+terra::plot(overlap)
 
 
 #Load example data
@@ -151,12 +99,6 @@ input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
 
 #export
 #risa::export_maps(input_maps, out_dir = "/home/jojo/Documents/pontal_projects/risa_example_maps")
-
-# test
-sp_sf <- input_maps$species_kernel_maps$species1$shp
-plot(sp_sf)
-kde_raster <- terra::rasterize(vect(sp_sf), rast(sp_sf, resolution=1000))
-terra::plot(kde_raster)
 
 # Create kernel maps of species and stressor distributions and overlap maps
 risa_maps <- risa_prep(spp_df, str_df)
@@ -206,7 +148,6 @@ spp_df
 
 output <- quick_byra(spp_df, str_df, df)
 output$summary_stats
-
 
 risaplot(output$kde_maps)
 risaplot(output)

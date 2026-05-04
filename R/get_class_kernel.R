@@ -2,7 +2,7 @@
 #'
 #' @description
 #' Creates kernel density estimation (KDE) maps from point data and converts the
-#' resulting probability surface into either categorical classes or a continuous
+#' resulting density surface into either categorical classes or a continuous
 #' rescaled rating. The input can be an `sf` point object or a `data.frame` whose
 #' first two columns contain numeric coordinates. The output can be returned as
 #' polygons, as a raster, or as both.
@@ -54,19 +54,21 @@
 #'   }
 #'
 #'   \item{`"fixed"`}{
-#'   Requires the user to supply a numeric value to `radius`. This option is
-#'   useful when a fixed, externally defined bandwidth should be used.
+#'   If `radius` is supplied, it overrides `radius_method` and is used directly.
+#'   The `"fixed"` option is intended to make this behavior explicit and requires
+#'   `radius` to be supplied.
 #'   }
 #' }
 #'
 #' The KDE surface can be converted into categorical classes or into a continuous
 #' rating. When `continuous = FALSE`, KDE values are reclassified into
-#' `n_classes` ordered classes. By default, the lowest KDE values can be excluded
+#' `n_classes` ordered classes (starting at 1 or any other value defined in
+#' `output_min`). By default, the lowest KDE values can be excluded
 #' using `exclude_lowest = TRUE` and `lowest_prop = 0.05`, which removes the
 #' lowest proportion of KDE values before assigning classes. When
-#' `continuous = TRUE`, KDE values are rescaled to a continuous range from
-#' `output_min` to `n_classes`, using the same lower threshold defined by the
-#' reclassification step.
+#' `continuous = TRUE`, `n_classes` is interpreted as the upper value of
+#' the output rating scale rather than as a number of discrete classes. The lower
+#' value is defined as 1, but can be changed by `output_min`.
 #'
 #' If `group_size` is provided, the corresponding numeric column in `x` is used
 #' as weights in the KDE estimation. This allows observations to contribute
@@ -77,10 +79,10 @@
 #'   coordinates. If a `data.frame` is supplied, the first two columns must be
 #'   numeric coordinate columns.
 #' @param area Optional spatial object used to define the KDE observation window
-#'   and mask the final output. Can be `NULL`, an `sf` object, a `bbox`, or a
+#'   and mask the final output. Ideally an `sf` object, a `bbox`, or a
 #'   `data.frame` that can be converted to an `sf` object. If `NULL`, an
 #'   observation-based rectangular window is created and the output is not
-#'   cropped or masked.
+#'   masked.
 #' @param n_classes Integer. Number of output classes or the maximum value of
 #'   the continuous rating scale. Default is `3`.
 #' @param output_min Numeric or `NULL`. Minimum value used when
@@ -154,7 +156,8 @@
 #'   area = study_area,
 #'   radius = 1000,
 #'   radius_method = "fixed",
-#'   output_layer_type = "raster"
+#'   output_layer_type = "raster",
+#'   return_crs = "4326"
 #' )
 #'
 #' # Example returning a continuous rating instead of classes
@@ -168,7 +171,7 @@
 #' }
 #'
 #' @export
-get_class_kernel2 <- function(
+get_class_kernel <- function(
     x,
     area = NULL,
     n_classes = 3,
@@ -652,7 +655,11 @@ get_class_kernel2 <- function(
     method = radius_method,
     dimyx = dimyx,
     input_crs = sf::st_crs(x_sf)$input,
-    output_crs = sf::st_crs(crs_ref)$input,
+    output_crs = if (return_crs == "4326") {
+      sf::st_crs(4326)$input
+      } else {
+      sf::st_crs(crs_ref)$input
+      },
     area_provided = use_area_mask,
     n_observations = nrow(coords),
     message = paste0(

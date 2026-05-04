@@ -2,7 +2,7 @@
 % Please edit documentation in R/byra_prep.R
 \name{byra_prep}
 \alias{byra_prep}
-\title{harmonizes input maps into a CRS, extent, origin, and resolution}
+\title{harmonizes input maps into a common CRS, extent, origin, and resolution}
 \usage{
 byra_prep(
   spp_maplist,

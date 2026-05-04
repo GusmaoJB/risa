@@ -7,29 +7,32 @@
 #' allows rapid testing of different criteria tables, decay settings, and
 #' area-of-interest, returning the full HRA results and associated summary statistics.
 #'
-#' @param x Can be a `sf`, `data.frame`, or `risaMaps` object. If x input is a
-#'   If a `data.frame`/`sf`, it assumes Species (habitat) input: `sf`, data.frame
-#'   of individual occurrences, or list of `sf` with occurrence points.
-#'   If a `data.frame`/`sf`, can be split into multiple layers via `group_x`.
-#'   If a `risaMaps`, quick_byra will ignore input y and assume that all KDE maps
-#'   of species/habitats and stressors, as well as their overlaps, are stored in x.
+#' @param x Species or habitat input. Can be an `sf` object, a `data.frame`,
+#'   a list of `sf` objects, or a `risaMaps` object produced by `risa_prep()`.
+#'   If `x` is a `data.frame` or `sf` object, it can be split into multiple
+#'   species/habitat layers using `group_x`. If `x` is a `risaMaps` object,
+#'   `y` is ignored and the precomputed maps stored in `x` are used directly.
 #' @param y Stressor input: `sf`, data.frame, or list of `sf`.
 #'   If a data.frame/`sf`, can be split into multiple layers via `group_y`.
-#' @param criteria A `data.frame` (formated after InVEST's HRA criteria input)
-#'   or a named list of `data.frame`s (ecosystem) with columns `STRESSOR`,
-#'   `ATTRIBUTES`, `RATING`, `DQ`, `WEIGHT`, and `E/C`. These tables define the
-#'   exposure/consequence criteria for each stressor.
+#' @param criteria A `data.frame` formatted according to InVEST's HRA criteria
+#'   input, or a named list of such `data.frame`s.
 #' @param area Optional AOI polygon (`sf`) or `bbox`/data.frame. If `NULL`,
 #'   the AOI is auto-computed based on `area_strategy`, `area_type`,
 #'   and `area_buffer_frac`.
 #' @param n_classes Integer number of classes for kernel reclassification
 #'   (default `3`). Passed to `risa_prep()` and used as `r_max` in `hra()`.
-#' @param n_overlap Optional integer: number of overlapping stressors assumed
-#'   for classification scaling. By default inferred from the criteria.
+#' @param output_min Numeric or `NULL`. Minimum value used when
+#'   `continuous = TRUE`. If `NULL`, defaults to `1`.
+#' @param continuous Logical. If `FALSE`, KDE, overlap, and HRA input maps are
+#'   based on discrete reclassified rasters. If `TRUE`, KDE and overlap maps are
+#'   treated as continuous rescaled rasters. Default is `FALSE`.
+#' @param n_overlap Optional integer: number of overlapping stressors used
+#'   for classification scaling. By default, it is equal to the number of stressors.
 #' @param radius Kernel density bandwidth (projected units). If `NULL`, uses
 #'   `radius_method`.
-#' @param radius_method One of `"nndist"` (default), `"ppl"`, or `"fixed"`.
-#'   Bandwidth selection method for KDE. See help page of `get_class_kernel()` for
+#' @param radius_method Character. Method used to estimate KDE `radius` from `x`
+#'   and `y` when `radius = NULL`. Options are `"nndist"`, `"nrd"`,
+#'   `"std_distance_scaled"`, `"ppl"`, and `"fixed"`. See help page of `get_class_kernel()` for
 #'   details.
 #' @param group_x,group_y Optional grouping columns to split `x`/`y` when
 #'   they aren’t lists.
@@ -65,19 +68,29 @@
 #' @param quiet Logical; if `TRUE` (default), suppresses console messages
 #'   from map preparation.
 #'
-#' @return An object of class "risaHRA" (see `hra()` for details),
-#'   with an added element: `area_of_interest` (The AOI polygon used for analysis).
+#' @return
+#' An object of class `risaHRA`, as returned by `hra()`, with additional
+#' elements:
+#' \describe{
+#'   \item{`kde_maps`}{The `risaMaps` object produced by `risa_prep()` or
+#'   supplied directly through `x`.}
+#'   \item{`area_of_interest`}{The AOI polygon used for map preparation and
+#'   risk analysis.}
+#' }
 #'
 #' @details
 #' This function:
 #' \enumerate{
-#'   \item Prepares kernel density and overlap maps with `risa_prep()`.
-#'   \item Reshapes the stressor–criteria structure for HRA.
+#'   \item Prepares KDE, distribution, and overlap maps with `risa_prep()`,
+#'   unless `x` is already a `risaMaps` object.
+#'   \item Reshapes the criteria table using `criteria_reshape()`.
+#'   \item Reshapes prepared maps with `reshape_risa_maps()`.
 #'   \item Runs `hra()` to compute exposure, consequence, and risk maps.
 #' }
 #'
-#' It is intended as a convenience wrapper for exploratory analyses,
-#' rather than full customization.
+#' Internally, `risa_prep()` is called with `output_layer_type = "both"` so that
+#' both raster and polygon outputs are available when discrete maps are used.
+#' When `continuous = TRUE`, raster outputs are used.
 #'
 #' @seealso `risa_prep()`, `hra()`
 #'
@@ -103,11 +116,11 @@ quick_byra <- function(x,
                         criteria,
                         area = NULL,
                         n_classes = 3,
+                        output_min = NULL,
+                        continuous = FALSE,
                         n_overlap = NULL,
                         radius = NULL,
-                        radius_method = c("nndist","ppl","fixed"),
-                        continuous = FALSE,
-                        output_min = NULL,
+                        radius_method = c("nndist", "nrd", "std_distance_scaled", "ppl", "fixed"),
                         group_x = NULL,
                         group_y = NULL,
                         group_size_x = NULL,
@@ -150,33 +163,32 @@ quick_byra <- function(x,
     }
     input_maps <- x
   } else {
-    # Generate Kernel Density and ditribution maps
+    input_maps <- risa_prep(
+      x = x,
+      y = y,
+      area = area,
+      n_classes = n_classes,
+      output_min = output_min,
+      output_layer_type = "both",
+      radius = radius,
+      radius_method = radius_method,
+      group_x = group_x,
+      group_y = group_y,
+      group_size_x = group_size_x,
+      group_size_y = group_size_y,
+      pixel_size = pixel_size,
+      dimyx = dimyx,
+      exclude_lowest = exclude_lowest,
+      lowest_prop = lowest_prop,
+      area_strategy = area_strategy,
+      area_type = area_type,
+      area_buffer_frac = area_buffer_frac,
+      continuous = continuous,
+      return_crs = return_crs,
+      overlap_method = overlap_method,
+      quiet = quiet
+    )
   }
-  input_maps <- risa_prep(
-    x = x,
-    y = y,
-    area = area,
-    n_classes = n_classes,
-    output_min = output_min,
-    output_layer_type = "both",
-    radius = radius,
-    radius_method = radius_method,
-    group_x = group_x,
-    group_y = group_y,
-    group_size_x = group_size_x,
-    group_size_y = group_size_y,
-    pixel_size = pixel_size,
-    dimyx = dimyx,
-    exclude_lowest = exclude_lowest,
-    lowest_prop = lowest_prop,
-    area_strategy = area_strategy,
-    area_type = area_type,
-    area_buffer_frac = area_buffer_frac,
-    continuous = continuous,
-    return_crs = return_crs,
-    overlap_method = overlap_method,
-    quiet = quiet
-  )
 
   # Reshape lists for HRA analysis
   raster_list <- reshape_risa_maps(input_maps, crit_names)

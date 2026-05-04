@@ -2,16 +2,18 @@
 % Please edit documentation in R/risa_prep.R
 \name{risa_prep}
 \alias{risa_prep}
-\title{Prepare and generate maps for risk assessment analysis}
+\title{Prepare KDE and overlap maps for risk assessment analysis}
 \usage{
 risa_prep(
   x,
   y,
   area = NULL,
   n_classes = 3,
+  output_min = NULL,
+  continuous = FALSE,
   output_layer_type = c("both", "shp", "raster"),
   radius = NULL,
-  radius_method = c("nndist", "ppl", "fixed"),
+  radius_method = c("nndist", "nrd", "std_distance_scaled", "ppl", "fixed"),
   group_x = NULL,
   group_y = NULL,
   group_size_x = NULL,
@@ -29,53 +31,135 @@ risa_prep(
 )
 }
 \arguments{
-\item{x}{Species (Habitat) input: `sf`, data.frame, or a list of `sf`. If a data.frame/sf,
-you can split it by `group_x` into multiple species layers.}
+\item{x}{Species or habitat input. Can be an `sf` object, a `data.frame`, or
+a list of `sf` objects. If `x` is a single `sf` or `data.frame`, it can be
+split into multiple layers using `group_x`.}
 
-\item{y}{Stressor input: `sf`, data.frame, or a list of `sf`. If a data.frame/sf,
-you can split it by `group_y` into multiple stressor layers.}
+\item{y}{Stressor input. Can be an `sf` object, a `data.frame`, or a list of
+`sf` objects. If `y` is a single `sf` or `data.frame`, it can be split into
+multiple layers using `group_y`.}
 
-\item{area}{Optional AOI polygon (`sf`) or `bbox`/data.frame; if `NULL`, it's computed.}
+\item{area}{Optional area of interest. Can be an `sf` polygon object, a
+`bbox`, a `data.frame` convertible to `sf`, or `NULL`. If `NULL`, the area
+is generated automatically.}
 
-\item{n_classes}{Integer number of classes for kernel reclassification (default 3).}
+\item{n_classes}{Integer. Number of classes used for KDE hotspot maps and
+overlap maps. Default is `3`.}
 
-\item{output_layer_type}{One of `"shp"`, `"raster"`, or `"both"` (default `"both"`).}
+\item{output_min}{Numeric or `NULL`. Minimum value used when
+`continuous = TRUE`. If `NULL`, defaults to `1`.}
 
-\item{radius}{KDE bandwidth (projected units). If `NULL`, uses `radius_method`.}
+\item{continuous}{Logical. If `FALSE`, KDE and overlap maps are returned as
+discrete reclassified maps. If `TRUE`, they are returned as continuous
+rescaled rasters. Default is `FALSE`.}
 
-\item{radius_method}{One of `"nndist"` (default), `"ppl"`, or `"fixed"`.}
+\item{output_layer_type}{Character. Output type for discrete maps. Options
+are `"shp"`, `"raster"`, or `"both"`. Default is `"both"`. Ignored when
+`continuous = TRUE`.}
 
-\item{group_x, group_y}{Optional grouping columns to split `x`/`y` when they aren't lists.}
+\item{radius}{Numeric or `NULL`. KDE bandwidth in projected units. If
+`NULL`, the bandwidth is estimated using `radius_method`.}
 
-\item{group_size_x, group_size_y}{Optional numeric weight columns for KDE.}
+\item{radius_method}{Character. Method used to estimate `radius` when
+`radius = NULL`. Options are `"nndist"`, `"nrd"`,
+`"std_distance_scaled"`, `"ppl"`, and `"fixed"`.}
 
-\item{pixel_size}{Optional pixel size (meters) for the KDE grid; else `dimyx` is used.}
+\item{group_x, group_y}{Optional column names used to split `x` and `y` into
+multiple layers when they are not already lists.}
 
-\item{dimyx}{Grid size (ny, nx) for KDE when `pixel_size` is `NULL` (default c(512,512)).}
+\item{group_size_x, group_size_y}{Character or `NULL`. Names of numeric
+columns in `x` and `y`, respectively, used as weights in KDE estimation.}
 
-\item{exclude_lowest, lowest_prop}{Passed to `reclass_matrix()` (defaults TRUE, 0.05).}
+\item{pixel_size}{Numeric or `NULL`. Desired raster pixel size in projected
+units. If `NULL`, `dimyx` is used to derive grid dimensions. When
+`return_crs = "metric"`, a square pixel size is automatically derived if
+needed.}
 
-\item{area_strategy}{`"stressor"` (default), `"species"`, or `"union"` for auto AOI.}
+\item{dimyx}{Numeric vector of length one or two. Grid dimensions used for
+KDE estimation when `pixel_size = NULL`. Default is `c(512, 512)`.}
 
-\item{area_type}{`"convex_hull"` (default) or `"bbox"` for auto AOI.}
+\item{exclude_lowest}{Logical. If `TRUE`, the lowest KDE values are excluded
+before reclassification or rescaling. Default is `TRUE`.}
 
-\item{area_buffer_frac}{Fractional expansion for auto AOI (default 0.5).}
+\item{lowest_prop}{Numeric. Proportion of the lowest KDE values to exclude
+when `exclude_lowest = TRUE`. Default is `0.05`.}
 
-\item{return_crs}{`"metric"` (default) or `"4326"` to reproject outputs to WGS84.}
+\item{area_strategy}{Character. Which input layers are used to create the
+automatic AOI when `area = NULL`. Options are `"stressor"`, `"species"`,
+or `"union"`.}
 
-\item{overlap_method}{Combination rule for overlap: one of `"product"`, `"sum"`,
-`"geom_mean"`, or `"max"` (default `"product"`). Passed to `get_overlap_kernel()`.}
+\item{area_type}{Character. Geometry used to create the automatic AOI.
+Options are `"convex_hull"` or `"bbox"`.}
 
-\item{quiet}{Suppress messages (default TRUE).}
+\item{area_buffer_frac}{Numeric. Fractional expansion applied when creating
+the automatic AOI. Default is `0.5`.}
+
+\item{return_crs}{Character. CRS of the returned outputs. `"metric"` keeps
+outputs in a projected metric CRS, while `"4326"` reprojects outputs to
+longitude/latitude WGS84.}
+
+\item{overlap_method}{Character. Combination rule used to calculate overlap
+maps. Options are `"product"`, `"sum"`, `"geom_mean"`, and `"max"`.
+Passed to `get_overlap_kernel()`.}
+
+\item{quiet}{Logical. If `TRUE`, suppresses progress messages. Default is
+`TRUE`.}
 }
 \value{
-A list with: `species_distributions`, `stressor_distributions`,
-  `species_kernel_maps`, `stressor_kernel_maps`, `overlap_maps`, and `area_of_interest`.
+An object of class `risaMaps`, returned as a list with:
+\describe{
+  \item{`species_distributions`}{A named list of species or habitat
+  distribution maps.}
+  \item{`stressor_distributions`}{A named list of stressor distribution
+  maps.}
+  \item{`species_kernel_maps`}{A named list of KDE hotspot maps for species
+  or habitats.}
+  \item{`stressor_kernel_maps`}{A named list of KDE hotspot maps for
+  stressors.}
+  \item{`overlap_maps`}{A nested list of pairwise species/habitat-by-stressor
+  overlap maps.}
+  \item{`area_of_interest`}{The area of interest used in the analysis,
+  returned in the requested CRS.}
+}
+
+Map elements contain a `terra::SpatRaster` in `$raster`; when
+`continuous = FALSE` and polygon outputs are requested, they may also contain
+an `sf` object in `$shp`.
 }
 \description{
-Generates kernel density maps for species (habitats) and stressors, plus overlap maps,
-within a given area of interest (auto-generated from stressors' distributions or user-supplied).
+Generates KDE-based distribution and hotspot maps for species or habitats and
+stressors, and computes pairwise overlap maps between them. Outputs can be
+discrete reclassified maps or continuous rescaled rasters, depending on the
+value of `continuous`.
+}
+\details{
+The function first converts species/habitat and stressor inputs into named
+lists of `sf` objects. If `group_x` or `group_y` are supplied, the respective
+inputs are split into multiple layers before KDE estimation.
+
+If `area = NULL`, an area of interest is generated automatically from the
+species layers, stressor layers, or their union, depending on
+`area_strategy`. The automatic area can be based on either a convex hull or
+a bounding box, controlled by `area_type`, and expanded using
+`area_buffer_frac`.
+
+KDE maps are generated with `get_class_kernel()`. Distribution maps are
+generated using one class, while kernel hotspot maps are generated using
+`n_classes`. Pairwise overlap maps between each species/habitat layer and
+each stressor layer are then generated with `get_overlap_kernel()`.
+
+When `continuous = FALSE`, outputs are reclassified into discrete classes and
+can be returned as rasters, `sf` polygons, or both. When `continuous = TRUE`,
+outputs are returned as continuous rasters and `output_layer_type` is ignored.
+
+When `return_crs = "metric"`, the function ensures that raster outputs are
+in a projected CRS with square cells. If `pixel_size = NULL`, a square pixel
+size is automatically derived from the AOI extent and `dimyx`. Outputs are
+regridded to a common metric raster template before being returned.
 }
 \examples{
-# add example here
+\dontrun{
+# Example to be added with package sample data
+}
+
 }

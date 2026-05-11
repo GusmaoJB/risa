@@ -9,7 +9,7 @@ get_class_kernel(
   area = NULL,
   n_classes = 3,
   output_min = NULL,
-  output_layer_type = c("shp", "raster", "both"),
+  output_layer_type = c("raster", "both", "shp"),
   radius = NULL,
   radius_method = c("nndist", "nrd", "std_distance_scaled", "ppl", "fixed"),
   group_size = NULL,

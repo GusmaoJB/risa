@@ -1,13 +1,12 @@
 Package: risa
 Type: Package
-Title: An R package for species and habitat risk assessment
-Version: 0.1.0
+Title: Toolkit for ecological risk mapping and quantification
+Version: 0.2.0
 Authors@R: c(
     person("Joao Bosco", "Gusmao", email = "gusmao.jb@gmail.com", 
            role = c("aut", "cre"), comment = c(ORCID = "0000-0002-6854-8529")),
-    person("Ceci", "Passadore", role = "ctb"),
     person("Hellen", "Hines", role = "ctb"),
-    person("Camila", "Domit", role = "ctb")
+    person("Camila", "Domit", role = "ctb", comment = c(ORCID = "0000-0001-6158-6963"))
     )
 Depends: 
     R (>= 3.5.1)

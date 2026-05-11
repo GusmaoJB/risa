@@ -14,7 +14,8 @@ hra(
   output_decimal_crs = FALSE,
   decay = c("none", "linear", "exponential", "polynomial_2nd", "polynomial_3rd",
     "complementary_decay_2nd", "complementary_decay_3rd"),
-  buffer_m = NULL
+  buffer_m = NULL,
+  quiet = TRUE
 )
 }
 \arguments{

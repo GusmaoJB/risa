@@ -176,7 +176,7 @@ get_class_kernel <- function(
     area = NULL,
     n_classes = 3,
     output_min = NULL,
-    output_layer_type = c("shp", "raster", "both"),
+    output_layer_type = c("raster", "both", "shp"),
     radius = NULL,
     radius_method = c("nndist", "nrd", "std_distance_scaled", "ppl", "fixed"),
     group_size = NULL,
@@ -190,6 +190,7 @@ get_class_kernel <- function(
     quiet = TRUE) {
 
   output_layer_type <- match.arg(output_layer_type)
+  auto_radius <- is.null(radius)
   radius_method <- match.arg(radius_method)
   return_crs <- match.arg(return_crs)
 
@@ -428,7 +429,7 @@ get_class_kernel <- function(
       radius <- sd_xy * nrow(coords)^(-1 / 6)
 
       if (!quiet) {
-        message(sprintf("Auto bandwidth (nrd): sigma = %.3f", radius))
+        message(paste("Auto bandwidth (nrd) : sigma =", round(radius), "meters."))
       }
 
     } else if (radius_method == "nndist") {
@@ -437,7 +438,7 @@ get_class_kernel <- function(
       radius <- 1.5 * mean(nn[is.finite(nn)], na.rm = TRUE)
 
       if (!quiet) {
-        message(sprintf("Auto bandwidth (nndist): sigma = %.3f", radius))
+        message(paste("Auto bandwidth (nndist) : sigma =", round(radius), "meters."))
       }
 
     } else if (radius_method == "ppl") {
@@ -446,7 +447,7 @@ get_class_kernel <- function(
       radius <- as.numeric(bw)
 
       if (!quiet) {
-        message(sprintf("Auto bandwidth (ppl): sigma = %.3f", radius))
+        message(paste("Auto bandwidth (ppl) : sigma =", round(radius), "meters."))
       }
 
     } else if (radius_method == "std_distance_scaled") {
@@ -467,10 +468,7 @@ get_class_kernel <- function(
       radius <- ((2 / (3 * n))^(1 / 4)) * std_dist
 
       if (!quiet) {
-        message(sprintf(
-          "Auto bandwidth (std_distance_scaled): sigma = %.3f",
-          radius
-        ))
+        message(paste("Auto bandwidth (std_distance_scaled): sigma =", round(radius), "meters."))
       }
     } else {
       stop("`radius` is NULL but `radius_method = 'fixed'. Supply a numeric radius.")
@@ -544,7 +542,7 @@ get_class_kernel <- function(
   # KDE
   kde <- spatstat.explore::density.ppp(
     X,
-    sigma = radius,
+    sigma = ifelse(auto_radius, round(radius), radius),
     weights = weights,
     dimyx = dimyx,
     at = "pixels",

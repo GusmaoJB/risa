@@ -13,39 +13,21 @@ editor_options:
 
 ## The *risa* package
 
-The **risa** package, which stands for RISk Assessment, was designed to
-automate the applycation of the Habitat Risk Assessment (HRA) model,
-which is part of the *InVEST* (Integrated Valuation of Ecosystem
-Services and Tradeoffs) toolkit developed by the Natural Capital Project
-(Arkema et al., 2014; Sharp et al., 2020).
+The **risa** package, which stands for **RISk Assessment**, was designed to automate the application of the Habitat Risk Assessment (HRA) model, which is part of the *InVEST* (*Integrated Valuation of Ecosystem Services and Tradeoffs*) toolkit developed by the Natural Capital Project (Arkema et al., 2014; Sharp et al., 2020).
 
-There are a entire suite of functions that were projected to automate
-the steps to apply the *ByRA* (Bycatch Risk Assessment) toolkit (Hines et al., 2020; Wilhelm
-et al., 2022). *ByRA* uses HRA methodology to quantify the spatial
-overlap between fisheries and marine megafauna and has been applied to
-assess bycatch risk for marine mammals.
+The package provides a suite of functions designed to automate the main steps required to apply the *ByRA* (Bycatch Risk Assessment) framework (Hines et al., 2020; Wilhelm et al., 2022). *ByRA* adapts the Habitat Risk Assessment (HRA) model to estimate bycatch risk by combining spatial overlap between fishing activities and marine megafauna with information on species vulnerability. In this framework, risk is estimated from two main components: *exposure*, which describes the degree to which a species is likely to interact with a given fishery, and *consequence*, which represents the expected severity of that interaction for the species or population. Thus, *ByRA* integrates spatial patterns of fisheries and species occurrence with criteria related to susceptibility, sensitivity, and potential population-level impacts. Although *ByRA* has been applied mainly to assess bycatch risk for marine mammals, the HRA implementation provided in **risa** is flexible and can accommodate different formulations or extensions of the HRA model, following the general approach implemented in the *InVEST* toolkit. 
 
-Specifically, **risa** automates the generation of Kernel Density Maps
-of species occurrences and stressor intensities from either data frames
-or shapefiles, the creation of overlap hotspot maps, and the execution
-of the full HRA model for one or multiple species and stressors. Users
-can select among multiplicative and Euclidean formulations of risk,
-apply optional decay functions to account for stressor influence
-buffers, and generate detailed summary statistics. In addition, **risa**
-provides flexibility to customize model settings, including the number
-of risk classes, buffer sizes for kernel density estimates and stressor
-zones, and the choice of coordinate system (metric or decimal).
+When fitting the HRA model, users can choose between multiplicative and Euclidean formulations of risk, apply optional decay functions to account for stressor influence buffers, and generate detailed summary statistics. In addition, **risa** provides flexibility to customize model settings, including the number of risk classes, buffer sizes for kernel density estimates and stressor zones, and the choice of coordinate system, either metric or decimal degrees.
+
+Specifically, **risa** includes functions to generate kernel density maps of species occurrences and stressor intensities from either data frames or shapefiles, create overlap hotspot maps, and run the full HRA model for one or multiple species and stressors. It also includes functions for handling raster and vector maps, generating figures that summarize HRA results, exporting raster or vector outputs, and quickly implementing the *ByRA* framework from raw observation data, either for exploratory analysis or for formal applications.
 
 ## Installation
 
-Since **risa** is still in its *alpha* version, it cannot be installed
-from R's CRAN repository. Thus, **risa** must be installed from a GitHub
-repository, which can be assessed via the link:
+Since **risa** is still in its *alpha* version, it cannot be installed from the CRAN repository. Therefore, **risa** must be installed from its GitHub repository:
 
-<https://github.com/GusmaoJB/risa/>
+[https://github.com/GusmaoJB/risa/](https://github.com/GusmaoJB/risa/)
 
-The easiest way to install **risa** is using the *install_github()* function in the package 
-**devtools**. If you don't have it, install **devtools** and via *install.packages("devtools")* and then run the code below to install **risa**.
+The easiest way to install **risa** is to use the `install_github()` function from the **devtools** package. If **devtools** is not already installed, first install it with `install.packages("devtools")`, and then run the code below to install **risa**.
 
 ```{r message=FALSE, warning=FALSE, eval=FALSE}
 # Load devtools
@@ -99,9 +81,9 @@ And a data.frame with similar structure for stressors:
 head(str_df)
 ```
 
-All we need now is to load the criteria table. This table compiles the key information required for the analysis, including exposure ratings of each species (or habitat) to specific stressors, consequence ratings of those interactions, and the corresponding weights used in risk estimation and data quality assessment.
+All we need now is to load the criteria table. This table compiles the key information required for the analysis, including exposure ratings of each species (or habitat) to specific stressors, consequence ratings of those interactions, and the corresponding weights used in risk estimation and the respective quality score of the data.
 
-Since we are working within the **ByRA** framework, we will use the criteria table specifically designed for this purpose, following the approach described in Hines et al. (2020).
+Since we are working within the *ByRA* framework, we will use the criteria table specifically designed for this purpose, following the approach described in Hines et al. (2020).
 
 ```{r message=FALSE, warning=FALSE, eval=FALSE}
 # Load criteria data
@@ -121,7 +103,7 @@ Let’s start with a very simple example, where we just want a quick assessment 
 
 This means we will not worry (yet) about the details behind how kernel density estimates for species and stressors are constructed, or how the HRA model is calculated. The default settings handle all of that for us, using conservative assumptions and standard data preparation protocols typically recommended for ByRA analyses.
 
-We can always refine and tweak both the data prep and the HRA model later—so for now, let’s start simple and see what we get.
+We can always refine and tweak both the data prep and the HRA model later. So, for now, let’s start simple and see what we get.
 
 ```{r}
 byra1 <- quick_byra(spp_df, str_df, criteria)
@@ -168,6 +150,9 @@ We can also visualize the maps that were considered for the risk estimates (KDE 
 risaplot(byra1$kde_maps)
 ```
 
+byra1$kde_maps
+
+## Calibrating ByRA
 
 
 

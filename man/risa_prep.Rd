@@ -11,7 +11,7 @@ risa_prep(
   n_classes = 3,
   output_min = NULL,
   continuous = FALSE,
-  output_layer_type = c("both", "shp", "raster"),
+  output_layer_type = c("raster", "both"),
   radius = NULL,
   radius_method = c("nndist", "nrd", "std_distance_scaled", "ppl", "fixed"),
   group_x = NULL,
@@ -54,7 +54,7 @@ discrete reclassified maps. If `TRUE`, they are returned as continuous
 rescaled rasters. Default is `FALSE`.}
 
 \item{output_layer_type}{Character. Output type for discrete maps. Options
-are `"shp"`, `"raster"`, or `"both"`. Default is `"both"`. Ignored when
+are `"raster"` (generate only `SpatRaster` maps), or `"both"` (generates `SpatRaster` and `sf` vector ["shp"] maps). Default is `"raster"`. Ignored when
 `continuous = TRUE`.}
 
 \item{radius}{Numeric or `NULL`. KDE bandwidth in projected units. If

@@ -35,8 +35,9 @@ When `continuous = TRUE`, this sets the maximum value for output scaling.}
 
 \item{method}{Combination rule: `"product"` (default), `"sum"`, `"geom_mean"`, or `"max"`.}
 
-\item{resample_method}{Resampling method to align `y` to `x` when grids differ. For class
-rasters, the default `"near"` preserves class labels.}
+\item{resample_method}{Resampling method to align `y` to `x` when grids differ, as implemented
+by `terra::resample`. The default `"near"` (nearest neighbour) preserves class labels, but
+accepts also `"bilinear"`, `"cubic"`, `"cubicspline"`, and `"lanczos"`.}
 
 \item{output_layer_type}{One of `"shp"`, `"raster"`, or `"both"`. Default `"shp"`.
 Ignored when `continuous = TRUE` (always returns raster).}

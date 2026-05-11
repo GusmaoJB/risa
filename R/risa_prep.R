@@ -48,7 +48,7 @@
 #'   discrete reclassified maps. If `TRUE`, they are returned as continuous
 #'   rescaled rasters. Default is `FALSE`.
 #' @param output_layer_type Character. Output type for discrete maps. Options
-#'   are `"shp"`, `"raster"`, or `"both"`. Default is `"both"`. Ignored when
+#'   are `"raster"` (generate only `SpatRaster` maps), or `"both"` (generates `SpatRaster` and `sf` vector ["shp"] maps). Default is `"raster"`. Ignored when
 #'   `continuous = TRUE`.
 #' @param radius Numeric or `NULL`. KDE bandwidth in projected units. If
 #'   `NULL`, the bandwidth is estimated using `radius_method`.
@@ -107,7 +107,7 @@
 #' an `sf` object in `$shp`.
 #'
 #' @importFrom sf st_as_sfc st_transform st_crs st_is_longlat st_bbox st_set_crs
-#' @importFrom terra project crs res geotransform ext rast resample
+#' @importFrom terra project crs res ext rast resample
 #'
 #' @examples
 #' \dontrun{
@@ -121,7 +121,7 @@ risa_prep <- function(
     n_classes = 3,
     output_min = NULL,
     continuous = FALSE,
-    output_layer_type = c("both","shp","raster"),
+    output_layer_type = c("raster", "both"),
     radius = NULL,
     radius_method = c("nndist", "nrd", "std_distance_scaled", "ppl", "fixed"),
     group_x = NULL,
@@ -150,24 +150,40 @@ risa_prep <- function(
   # Fail-fast guards for metric, square outputs
   .check_square_metric <- function(r) {
     if (!inherits(r, "SpatRaster")) return(invisible(TRUE))
+
     crs_str <- terra::crs(r)
+
     if (is.na(crs_str) || !nzchar(crs_str)) {
-      stop("Output raster has no CRS defined. Stamp a metric CRS before HRA (use return_crs='metric').")
+      stop(
+        "Output raster has no CRS defined. ",
+        "Stamp a metric CRS before HRA (use return_crs = 'metric')."
+      )
     }
-    info <- terra::crs(r, describe = TRUE)
-    is_ll <- tryCatch(isTRUE(info$is_lonlat), error = function(e) NA)
-    if (isTRUE(is_ll)) stop("Output raster is lon/lat but HRA requires metric CRS. Use return_crs='metric'.")
+
+    if (terra::is.lonlat(r)) {
+      stop(
+        "Output raster is lon/lat but HRA requires metric CRS. ",
+        "Use return_crs = 'metric'."
+      )
+    }
+
     rs <- as.numeric(terra::res(r))
-    if (length(rs) < 2L) stop("Raster resolution is invalid (length < 2).")
+
+    if (length(rs) < 2L) {
+      stop("Raster resolution is invalid (length < 2).")
+    }
+
     if (!isTRUE(all.equal(rs[1], rs[2]))) {
-      stop(sprintf("Output raster has non-square cells (xres=%.6f, yres=%.6f). Set pixel_size or adjust dimyx.",
-                   rs[1], rs[2]))
+      stop(sprintf(
+        paste0(
+          "Output raster has non-square cells ",
+          "(xres = %.6f, yres = %.6f). ",
+          "Set pixel_size or adjust dimyx."
+        ),
+        rs[1], rs[2]
+      ))
     }
-    # Optional: catch rotated/sheared transforms (can also trigger GDAL warnings)
-    gt <- tryCatch(terra::geotransform(r), error = function(e) NULL)
-    if (!is.null(gt) && (gt[3] != 0 || gt[5] != 0)) {
-      stop("Raster has rotation/shear; reproject/resample to a north-up grid.")
-    }
+
     invisible(TRUE)
   }
 
@@ -237,11 +253,23 @@ risa_prep <- function(
   }
 
   # Kernels builder (passes pixel_size forward)
+  if (!quiet) message("Buiding KDE maps...")
   # When continuous = TRUE, force output_layer_type to "raster"
   kernel_output_type <- if (continuous) "raster" else output_layer_type
 
   build_kernels <- function(lst, group_size = NULL, ncls = n_classes) {
-    lapply(lst, function(item) {
+    nms <- names(lst)
+
+    if (is.null(nms)) {
+      nms <- paste0("item_", seq_along(lst))
+    } else {
+      nms[nms == ""] <- paste0("item_", which(nms == ""))
+    }
+
+    out <- Map(function(item, nm) {
+
+      if (!quiet) message("Processing: ", nm)
+
       get_class_kernel(
         item,
         area = if (return_crs == "metric") area_metric else area,
@@ -259,20 +287,63 @@ risa_prep <- function(
         return_crs = return_crs,
         quiet = quiet
       )
+
+    }, lst, nms)
+
+    names(out) <- nms
+    out
+  }
+
+  map_pa <- function(item) {
+
+    if (inherits(item, "SpatRaster")) {
+      out <- terra::ifel(is.na(item), NA, 1)
+      names(out) <- names(item)
+      return(out)
+    }
+
+    if (inherits(item, "sf")) {
+      geom_union <- sf::st_union(sf::st_geometry(item))
+
+      out <- sf::st_sf(
+        Rating = 1,
+        geometry = sf::st_sfc(geom_union, crs = sf::st_crs(item))
+      )
+
+      return(out)
+    }
+
+    item
+  }
+
+  build_pa_list <- function(x) {
+    lapply(x, function(item) {
+
+      out <- list()
+
+      if ("raster" %in% names(item)) {
+        out$raster <- map_pa(item$raster)
+      }
+
+      if ("shp" %in% names(item)) {
+        out$shp <- map_pa(item$shp)
+      }
+
+      out
     })
   }
 
-  # Distributions (presence maps): 1 class; Kernels: n_classes
-  spp_distribution_list <- build_kernels(spp_list, group_size = group_size_x, ncls = 1L)
-  str_distribution_list <- build_kernels(str_list, group_size = group_size_y, ncls = 1L)
+  # Performing KDEs with n_classes
   spp_kernel_list <- build_kernels(spp_list, group_size = group_size_x, ncls = n_classes)
   stressor_kernel_list <- build_kernels(str_list, group_size = group_size_y, ncls = n_classes)
 
   # Standardize lists when continuous = TRUE
-  spp_distribution_list <- .standardize_kernel_list(spp_distribution_list)
-  str_distribution_list <- .standardize_kernel_list(str_distribution_list)
   spp_kernel_list <- .standardize_kernel_list(spp_kernel_list)
   stressor_kernel_list <- .standardize_kernel_list(stressor_kernel_list)
+
+  # Create distribution lists
+  spp_distribution_list <- build_pa_list(spp_kernel_list)
+  str_distribution_list <- build_pa_list(stressor_kernel_list)
 
   # AOI CRS for output (only transform AOI geometry for return)
   if (return_crs == "4326") {

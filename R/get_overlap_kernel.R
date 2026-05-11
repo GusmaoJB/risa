@@ -18,8 +18,9 @@
 #' @param out_classes Integer: number of classes in the discrete output (default = `n_classes`).
 #'   When `continuous = TRUE`, this sets the maximum value for output scaling.
 #' @param method Combination rule: `"product"` (default), `"sum"`, `"geom_mean"`, or `"max"`.
-#' @param resample_method Resampling method to align `y` to `x` when grids differ. For class
-#'   rasters, the default `"near"` preserves class labels.
+#' @param resample_method Resampling method to align `y` to `x` when grids differ, as implemented
+#'   by `terra::resample`. The default `"near"` (nearest neighbour) preserves class labels, but
+#'   accepts also `"bilinear"`, `"cubic"`, `"cubicspline"`, and `"lanczos"`.
 #' @param output_layer_type One of `"shp"`, `"raster"`, or `"both"`. Default `"shp"`.
 #'   Ignored when `continuous = TRUE` (always returns raster).
 #' @param quiet Logical; suppress informative messages. Default `TRUE`.
@@ -97,6 +98,10 @@ get_overlap_kernel <- function(
 
   method  <- match.arg(method)
   output_layer_type <- match.arg(output_layer_type)
+
+  if (!quiet) {
+    message(paste("Estimating overlap map considering method:", method))
+  }
 
   # Basic checks
   if (!inherits(x, "SpatRaster") || !inherits(y, "SpatRaster")) {
@@ -237,6 +242,7 @@ get_overlap_kernel <- function(
 
     brks <- seq(0, 1, length.out = out_classes + 1)
     mat <- cbind(from = brks[-length(brks)], to = brks[-1], class = seq_len(out_classes))
+    if (!quiet) message(paste("Reclassifying overlap map based on", out_classes, "classes."))
     result <- terra::classify(norm, rcl = mat, include.lowest = TRUE)
   }
 

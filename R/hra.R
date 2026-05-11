@@ -155,30 +155,13 @@ hra <- function(
     decay = c("none", "linear", "exponential",
               "polynomial_2nd", "polynomial_3rd",
               "complementary_decay_2nd", "complementary_decay_3rd"),
-    buffer_m = NULL) {
+    buffer_m = NULL,
+    quiet=TRUE) {
 
   depth <- list_depth_base(raster_list)
   equation <- match.arg(equation)
   decay <- match.arg(decay)
   m_jkl <- if (equation=="multiplicative") r_max^2 else sqrt(2*(r_max-1)^2)
-
-  # Helpers
-  # Check criteria input format
-  .check_criteria <- function(df_or_list) {
-    req <- c("STRESSOR","ATTRIBUTES","RATING","DQ","WEIGHT","E/C")
-    if (is.data.frame(df_or_list)) {
-      if (!all(req %in% names(df_or_list))) stop("Criteria must contain: ", paste(req, collapse=", "))
-      return(df_or_list)
-    }
-    if (is.list(df_or_list)) {
-      lapply(df_or_list, function(d) {
-        if (!is.data.frame(d) || !all(req %in% names(d))) {
-          stop("Each criteria element must contain: ", paste(req, collapse=", "))
-        }
-        d
-      })
-    } else stop("'criteria' must be a data.frame (single) or list (ecosystem).")
-  }
 
   # Find/extract a SpatRaster if user passed a list container
   .as_raster <- function(x) {
@@ -202,7 +185,7 @@ hra <- function(
     sp_distr <- .as_raster(sp_distr)
     if (!inherits(sp_distr, "SpatRaster")) stop("'species_distr' must be or contain a SpatRaster.")
 
-    crit <- .check_criteria(crit)
+    crit <- check_criteria(crit)
 
     stressors <- unique(crit$STRESSOR)
     stressors <- stressors[!(is.na(stressors) | stressors %in% c("", "NA"))]
@@ -368,12 +351,22 @@ hra <- function(
     res
   }
 
+  # Basic messages
+  if (!quiet) {
+    crit_dat <- check_criteria(criteria)
+    stressors <- unique(crit_dat$STRESSOR)
+    message(paste("Risk equation:", equation))
+    message(paste("Max Rating score:", r_max))
+    message(paste("Number of overlaping stressors:",
+                  ifelse(is.null(n_overlap), length(stressors), n_overlap)))
+  }
+
   # Dispatch
   if (depth == 2L) {
     return(.single(
       rlist = raster_list,
       sp_distr = species_distr,
-      crit = .check_criteria(criteria),
+      crit = check_criteria(criteria),
       equation = equation,
       r_max = r_max,
       n_overlap = n_overlap,

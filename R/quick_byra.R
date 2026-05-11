@@ -194,17 +194,24 @@ quick_byra <- function(x,
   raster_list <- reshape_risa_maps(input_maps, crit_names)
   species_distr <- input_maps$species_distributions
 
+  # Define number of overlaping stressors
+  if (is.null(n_overlap)) {
+    stressors <- unique(sample_crit$STRESSOR)
+    n_overlap <- length(stressors)
+  }
+
   # Perform HRA
   byra_hra <- hra(
-    raster_list,
-    species_distr,
-    criteria,
-    equation,
+    raster_list = raster_list,
+    species_distr = species_distr,
+    criteria = criteria,
+    equation = equation,
     r_max = n_classes,
-    n_overlap,
+    n_overlap = n_overlap,
     output_decimal_crs = return_crs != "metric",
-    decay,
-    buffer_m)
+    decay = decay,
+    buffer_m = buffer_m,
+    quiet = quiet)
 
   # Outputs
   output <- byra_hra

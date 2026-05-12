@@ -141,19 +141,42 @@ risaplot <- function(x) {
   }
 
   # Convert a raster list into a data.frame
+  # Extract raster from either: a direct SpatRaster or a list containing a $raster element
+  .get_raster <- function(x, object_name = "raster") {
+    if (inherits(x, "SpatRaster")) {
+      return(x)
+    }
+
+    if (is.list(x) && !is.null(x[[object_name]]) &&
+        inherits(x[[object_name]], "SpatRaster")) {
+      return(x[[object_name]])
+    }
+
+    stop("Could not find a SpatRaster in this object.")
+  }
+
+  # Convert a raster list into a data.frame
   .rast_list_to_df <- function(r_list, object_name = "raster",
                                group_names = NULL, value_name = "value") {
 
     if (is.null(group_names)) group_names <- names(r_list)
 
-    r_stack <- terra::rast(map(group_names, ~ r_list[[.x]][[object_name]]))
+    r_stack <- terra::rast(
+      purrr::map(group_names, ~ .get_raster(r_list[[.x]], object_name))
+    )
+
     names(r_stack) <- group_names
+
     df <- terra::as.data.frame(r_stack, xy = TRUE)
-    names(df)[1:2] <- c("Longitude","Latitude")
+
+    names(df)[1:2] <- c("Longitude", "Latitude")
+
     df |>
-      pivot_longer(-c(Longitude,Latitude),
-                   names_to = "group",
-                   values_to = value_name) |>
+      tidyr::pivot_longer(
+        -c(Longitude, Latitude),
+        names_to = "group",
+        values_to = value_name
+      ) |>
       dplyr::filter(!is.na(.data[[value_name]]))
   }
 
@@ -171,9 +194,12 @@ risaplot <- function(x) {
       aoi_layer
   }
 
-  # checks if rasters
+  # Check whether overlap maps are rasters
   .is_raster_overlap <- function(overlap_one) {
-    any(purrr::map_lgl(overlap_one, ~ inherits(.x$raster, "SpatRaster")))
+    any(purrr::map_lgl(overlap_one, ~ {
+      inherits(.x, "SpatRaster") ||
+        (is.list(.x) && !is.null(.x$raster) && inherits(.x$raster, "SpatRaster"))
+    }))
   }
 
   # risaMaps

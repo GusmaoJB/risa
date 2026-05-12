@@ -29,6 +29,14 @@ Since **risa** is still in its *alpha* version, it cannot be installed from the 
 
 The easiest way to install **risa** is to use the `install_github()` function from the **devtools** package. If **devtools** is not already installed, first install it with `install.packages("devtools")`, and then run the code below to install **risa**.
 
+```{r setup, include=FALSE}
+library(risa)
+
+knitr::opts_knit$set(
+  root.dir = "/home/jojo/Documents/pontal_projects/risa2/tests/"
+)
+```
+
 ```{r message=FALSE, warning=FALSE, eval=FALSE}
 # Load devtools
 library(devtools)
@@ -44,16 +52,24 @@ library(risa)
 
 Since we depend on functions in the packages *terra* and *sf* to load
 and manipulate rasters and shapefiles, we will load these packages to
-perform our examples. First, let's keep our work files (rasters,
-shapefiles, dataframes) in a *data* folder inside our working directory.
+perform our examples. First, let's keep our work files (dataframes) in a *data* folder inside our working directory.
+
+You can set your working directory in RStudio by clicking in **Session**, then **Set Working Directory**, and finally **Choose Directory**. However, it is easier if you use `setwd()`.
+
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+# Replace the input with the path to your working project
+setwd("/path/to/your/project/folder")
+```
+
 In this first example, let's suppose we have species and stressor
-distribuions as occurrence points in CSV files:
+distribuions as occurrence points in CSV files. These are simulation data of observations of megafauna and fisheries in the Gulf of Guinea.
 
 ```{r warning=FALSE, include=FALSE}
 library(risa)
-spp_df <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/species_distr.csv")
-str_df <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/stressor_distr.csv")
-criteria <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/criteria.csv")
+
+spp_df <- read.csv("data/species_input.csv")
+str_df <- read.csv("data/stressor_input.csv")
+criteria <- read.csv("data/criteria.csv")
 ```
 
 ```{r message=FALSE, warning=FALSE, eval=FALSE}
@@ -62,8 +78,8 @@ library(sf)
 library(terra)
 
 # Loading species and stressor data
-spp_df <- read.csv("data/species_distr.csv")
-str_df <- read.csv("data/stressor_distr.csv")
+spp_df <- read.csv("data/species_input.csv")
+str_df <- read.csv("data/stressor_input.csv")
 ```
 
 Then we have a dataframe describing the occurrences of different
@@ -103,14 +119,23 @@ Let’s start with a very simple example, where we just want a quick assessment 
 
 This means we will not worry (yet) about the details behind how kernel density estimates for species and stressors are constructed, or how the HRA model is calculated. The default settings handle all of that for us, using conservative assumptions and standard data preparation protocols typically recommended for ByRA analyses.
 
-We can always refine and tweak both the data prep and the HRA model later. So, for now, let’s start simple and see what we get.
+We can always refine and tweak both the data prep and the HRA model later. So, for now, let’s start simple and see what we get. We will add the argument *quiet=TRUE* to get some basic info about the construction of the mapped Kernel Density Estimates (KDE), and the default parameters for the HRA model estimates.
 
 ```{r}
-byra1 <- quick_byra(spp_df, str_df, criteria)
+byra1 <- quick_byra(spp_df, str_df, criteria, quiet = FALSE)
 ```
 
-And that is it! All the results we want, including the maps and statistics of risk estimates 
-are stored in *byra1*. If we check it out, we will find this:
+And that is it!
+
+The information printed in the Console when we set `quiet = FALSE` provides useful details about the workflow. First, the function automatically guessed the coordinate reference system of the input data as **UTM zone 30N: EPSG:32630**, which is appropriate for these data.
+
+Then, during the KDE step, it automatically estimated the bandwidth used as the spatial radius (`sigma`, in meters) for each species and stressor. In this example, the bandwidth was estimated using the **nearest-neighbor distance** method (`nndist`).
+
+The Console output also indicates that the overlap between species and stressor KDEs was calculated using the product of their reclassified KDE scores.
+
+The resulting overlap values were then reclassified into three classes. Finally, the output shows that the HRA risk calculations were based on the Euclidean equation, with the maximum Rating value set to 3 and the number of overlapping stressors equals 2.
+
+All results, including the maps and risk estimate statistics, are stored in *byra1*. If we inspect this object, we will find the following:
 
 ```{r}
 names(byra1)
@@ -139,6 +164,7 @@ byra1$summary_stats
 Now let’s visualize the main results using the *risaplot()* function. Since we are working with multiple species and stressors, the function will generate six plots.
 
 The first two plots show the risk estimates (raw and reclassified) for each species, considering the isolated effect of each stressor. Plots 3 and 4 display the risk estimates (raw and reclassified) for each species when all stressors are combined. Finally, plots 5 and 6 present the ecosystem-level risk estimates (raw and reclassified), derived from the combined risk across all species.
+Note: The ecosystem mode is absent when we have only one species.
 
 ```{r}
 risaplot(byra1)
@@ -150,15 +176,316 @@ We can also visualize the maps that were considered for the risk estimates (KDE 
 risaplot(byra1$kde_maps)
 ```
 
-byra1$kde_maps
-
 ## Calibrating ByRA
 
+The example above provides a useful exploratory starting point. However, we can now refine the analysis by incorporating what we know about our data and study system.
 
+First, we may want to work with a broader area of interest instead of restricting the analysis to the spatial distribution of the stressors. To do this, we can set: *area_strategy = "union"*, which uses the combined spatial extent of both species and stressor observations to define the area of interest.
 
+Second, we can define different KDE bandwidths according to the expected movement patterns of each species and stressor. For example, suppose that **Dolphin** is a highly mobile species that explores multiple habitats over short time periods, can travel tens of kilometers per day, and is observed from coastal to oceanic waters. In contrast, **Turtle** tends to be more restricted to specific habitats and moves less across habitat patches within a week. In this case, it makes sense to use a larger radius for **Dolphin** observations and a more restricted radius for **Turtle** observations, such as 5000 m and 3000 m, respectively.
 
+We can apply the same reasoning to the stressors. For instance, boats using **Gillnet** may move widely across marine areas while searching for fishing grounds, whereas **Trawling** may be more spatially restricted to smaller fishing areas. In this example, we could use a radius of 6000 m for **Gillnet** and 4000 m for **Trawling**.
 
+Thus, we can pass these values to `quick_byra()` using a named vector:
 
+*radius = c(Dolphin = 5000, Turtle = 3000, Gillnet = 6000, Trawling = 4000)*
+
+Another useful refinement concerns the KDE estimates for the species. Because we have information on the group size of each species observation, we can use this variable as a weight in the KDE calculations. This is done by providing the name of the column that stores group size information: *group_x = "group_size"*
+
+Regarding the HRA model calculations, we are interested in the combined effects of multiple stressors. Therefore, it makes sense to use the **multiplicative** HRA equation, which is especially useful when estimating risk from multiple overlapping stressors.
+
+Finally, we can also account for the spatial zone of influence around stressor observations. For example, suppose that **Gillnet** has an influence zone of 3000 m, while **Trawling** has an influence zone of 2000 m. We can represent this using a linear decay function: *decay = "linear"*, and define stressor-specific buffers with:
+
+*buffer_m = c(Gillnet = 3000, Trawling = 2000)*
+
+Together, these arguments allow the ByRA workflow to better reflect the ecological characteristics of the species, the spatial behavior of the stressors, and the structure of the available data.
+
+```{r}
+byra2 <- quick_byra(spp_df, str_df, criteria,
+                    area_strategy = "union",
+                    radius = c(Dolphin = 5000,
+                               Turtle = 3000,
+                               Gillnet = 6000,
+                               Trawling = 4000),
+                    group_size_x = "group_size",
+                    equation = "multiplicative",
+                    decay = "linear",
+                    buffer_m = c(Gillnet = 3000,
+                                 Trawling = 2000),
+                    quiet = FALSE)
+```
+
+Let's compare the KDE maps to see the differences in the input maps! This time, let's use an useful package called *patchwork*.
+
+```{r}
+byra1_kdes <- risaplot(byra1$kde_maps)
+byra2_kdes <- risaplot(byra2$kde_maps)
+
+library(patchwork)
+
+byra1_kdes[[1]] / byra2_kdes[[1]]
+```
+
+The output looks quite different! Now, let's check the stressors' KDEs!
+
+```{r}
+byra1_kdes[[2]] / byra2_kdes[[2]]
+```
+
+The differences are not as pronounced as those observed for the species, but some interesting patterns can still be identified. This highlights how decisions made before the analysis can strongly affect mapped risk estimates. Therefore, we strongly recommend treating automatic buffer estimates in **risa** mainly as tools for exploratory analysis.
+
+By default, the radius is estimated as the mean nearest-neighbour distance among points, multiplied by 1.5. This means that the radius is based only on the spatial dispersion of the observations. It does not account for the spatial scale of the analysis, nor for how that scale relates to the movement ecology of the species or to the spatial influence of the stressor being mapped.
+
+Now, let’s check how the mapped risk estimates look.
+
+Because we are now applying a decay function to the stressors, we should be able to see gradients of risk around the core stressor KDEs, especially in areas where stressors overlap with species distributions.
+
+```{r}
+risaplot(byra2)
+```
+
+For more complex HRA models that differ from the standard structure usually applied in **ByRA**, we recommend using the `hra()` function in **risa**. Since this tutorial focuses mainly on applying **ByRA** in *R*, we will include only a brief example showing how to run the HRA model directly with `hra()` using the same example data (`spp_df`, `str_df`, `and criteria`).
+
+First, we need to create the input maps from our data. We can do this by running `risa_prep()`, which accepts the data frames `spp_df` and `str_df` as inputs. If we use the same values for `area_strategy`, `radius`, and `group_size_x` that we used in **byra2**, the output from `risa_prep()` will be identical to the objects stored in `byra2_kdes`.
+
+```{r}
+input_kdes <- risa_prep(spp_df, str_df,
+                        area_strategy = "union",
+                        radius = c(Dolphin = 5000,
+                                   Turtle = 3000,
+                                   Gillnet = 6000,
+                                   Trawling = 4000),
+                        group_size_x = "group_size")
+```
+
+We now have the input maps, but they first need to be organized into the correct structure before running `hra()`.
+
+To do this, the input maps must be arranged as a hierarchical list of lists. At the top level, there should be one list for each species. Inside each species-level list, there should be one list for each stressor. Finally, inside each stressor-level list, the maps should be stored as rasters named according to their corresponding attributes in the criteria table. In the case of **ByRA**, these attributes are `"intensity"` and `"likelihood of interaction"`.
+
+We also need a list of maps, `spp_dist`, describing the overall distribution of each species. These maps are derived from the KDE maps but reclassified to represent areas of potential presence as `1` and areas of absence as `NA`.
+
+```{r}
+# Input KDEs (intensity) and overlaps (likelihood of interaction)
+rast_list <- list(
+   species1 = list(
+     stressor1 = list(
+       intensity = input_kdes$stressor_kernel_maps$stressor1$raster,
+       `likelihood of interaction`=input_kdes$overlap_maps$species1$stressor1$raster),
+     stressor2 = list(
+       intensity = input_kdes$stressor_kernel_maps$stressor2$raster,
+       `likelihood of interaction`=input_kdes$overlap_maps$species1$stressor2$raster)
+   ),
+   species2 = list(
+     stressor1 = list(
+       intensity = input_kdes$stressor_kernel_maps$stressor1$raster,
+       `likelihood of interaction`=input_kdes$overlap_maps$species2$stressor1$raster),
+     stressor2 = list(
+       intensity = input_kdes$stressor_kernel_maps$stressor2$raster,
+       `likelihood of interaction`=input_kdes$overlap_maps$species2$stressor2$raster)
+   )
+ )
+
+# Species' distributions
+spp_dist <- list(species1 = input_kdes$species_distributions$species1$raster,
+                 species2 = input_kdes$species_distributions$species2$raster)
+
+```
+
+Now, we have everything we need to run the model. Most arguments in the `hra()` function are similar to those in `quick_byra()`, because `quick_byra()` uses `hra()` internally to perform the analysis. The output of the code below is identical to *byra1*, since it is based on the same input data and criteria table.
+
+However, because `hra()` allows us to build and reshape the input objects manually, it can also be used to implement other extensions of the HRA model, including models with different criteria attributes and associated input maps. However, we will not explore these broader HRA applications and will keep the focus on **ByRA**.
+
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+# Perform the HRA model
+hra1 <- hra(rast_list, spp_dist, criteria, ...)
+```
+
+## Running the model using layer inputs
+
+In some cases, we may want to use ready-to-use spatial layers as input data for our analyses. These inputs can include vector files, such as shapefiles or *Google Earth KML/KMZ* files, and raster files, such as *GeoTIFF* or *ESRI ASCII Grid* files. We may also have spatial objects already loaded or created in *R*, such as species distribution models stored as `SpatRaster` objects from the **terra** package, or fishing areas represented as geospatial polygons stored as `sf` vector objects from the **sf** package.
+
+In this example, we will use a hypothetical case with two species and two stressors. The data for the first species, *Seal*, are stored as a *GeoTIFF* file representing species distribution hotspots. The data for the second species, *Sea lion*, are stored in an **Excel** spreadsheet containing georeferenced occurrence records. The first stressor, *Driftnet*, is stored as a collection of *Google Earth KML/KMZ* files in one folder (**driftnet_polygons**), while the second stressor, *Gillnet*, is stored as a shapefile in another folder (**gillnet_polygons**). All these files are stored inside a folder called **data2**.
+
+We will load these files and harmonize their spatial structure so that they can be used as inputs to run **ByRA**.
+
+First, let's load data about the two species, one of the stressors (gillnet) and the criteria table.
+
+```{r warning=FALSE, include=FALSE}
+library(readxl)
+sea_lion_df <- readxl::read_excel("/home/jojo/Documents/pontal_projects/risa2/tests/data2/sea_lion_df.xlsx")
+seal_rast <- terra::rast("/home/jojo/Documents/pontal_projects/risa2/tests/data2/seal_hotspots.tif")
+gillnet_sf <- sf::read_sf("/home/jojo/Documents/pontal_projects/risa2/tests/data2/gillnet_polygons/gillnet_polygons.shp")
+criteria2 <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data2/criteria2.csv")
+```
+
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+library(readxl) # to read excel files
+
+# Load Sea lion data from an Excel file
+sea_lion_df <- readxl::read_excel("data2/sea_lion_df.xlsx")
+
+# Load Seal data from a .tif raster
+seal_rast <- terra::rast("data2/seal_hotspots.tif")
+
+# Load Gillnet data from a shapefile
+gillnet_sf <- sf::read_sf("data2/gillnet_polygons/gillnet_polygons.shp")
+
+# Load criteria data
+criteria2 <- read.csv("data2/criteria2.csv")
+```
+
+The data on driftnets is stored in multiple files, so it is a bit more complicated to load:
+
+```{r}
+library(dplyr, quietly = TRUE) # to use dplyr::bind_rows
+
+# First we need the path to the folder where we keep the kml files
+folder_path <- paste(getwd(), "data2/driftnet_polygons", sep = "/")
+
+# Then we recover the file names in that folder
+kml_files <- list.files(
+  folder_path,
+  pattern = "\\.kml$",
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+
+# Then we load all files as sf vectors and store then in a list
+kml_list <- lapply(kml_files, function(f) {
+  x <- st_read(f, quiet = TRUE)
+  x$source_file <- basename(f)
+  return(x)
+})
+
+# Then we bind all sf vectors together into a single object
+driftnet_sf <- dplyr::bind_rows(kml_list)
+```
+
+Now, we need to prepare the input maps.
+
+The object `seal_rast` is almost ready to use. It is a raster layer with continuous values representing the probability of seal occurrence within a given area.
+
+```{r}
+terra::plot(seal_rast)
+```
+
+Although we could theoretically use these continuous values directly, the standard **ByRA** framework is usually based on ordinal integer categories, preferably ranging from 1 to 3. Therefore, we will reclassify the values in `seal_rast` into three categories.
+
+```{r}
+# First we need to make a reclassificaiton matrix
+re_mat <- reclass_matrix(seal_rast, n_classes = 3, exclude_lowest = FALSE)
+
+# Then use the reclassification matrix to reclassify our raster
+seal_rast_rec <- terra::classify(
+  seal_rast,
+  re_mat,
+  include.lowest = TRUE
+)
+
+# Plot it
+terra::plot(seal_rast_rec)
+```
+
+The *Seal* data are ready to use. Now, we need to focus on the *Sea lion* data stored in `sea_lion_df`. We will create the map using the `get_class_kernel()` function from **risa**.
+
+Here, we include the `group_size` argument so that the number of individuals is used as a weight in the KDE estimation. We will also set a radius of 5000 m for the KDE.
+
+```{r}
+# KDE
+sea_lion_kde <- get_class_kernel(sea_lion_df, 
+                                 group_size = "group_size", 
+                                 radius = 5000)
+
+# Plot
+terra::plot(sea_lion_kde)
+```
+
+With this, the species data are ready. Now we need to work on the stressor data. Both `gillnet_sf` and `driftnet_sf` are `sf` objects containing multiple polygons that represent fishing areas reported by different fishermen. Our goal is to identify areas with greater overlap among these polygons, which can be interpreted as zones of higher fishing activity.
+
+To do this, we first add a `Rating` attribute to each polygon and set its value to `1`. Then, we rasterize the polygons and sum their `Rating` values. As a result, raster cells covered by one polygon receive value `1`, cells where two polygons overlap receive value `2`, and so on. This creates a raster map representing the intensity of overlapping fishing use.
+
+```{r}
+# Convert sf to SpatVector
+v_gillnet <- terra::vect(gillnet_sf)
+v_driftnet <- terra::vect(driftnet_sf)
+
+# Add value 1 of 'Rating' to each polygon
+v_gillnet$Rating <- 1
+v_driftnet$Rating <- 1
+
+# Reproject to a metric CRS before defining resolution in meters
+# Example: WGS 84 / UTM zone 30N (EPSG:32630)
+v_gillnet_m <- terra::project(v_gillnet, "EPSG:32630")
+v_driftnet_m <- terra::project(v_driftnet, "EPSG:32630")
+
+# Create a template raster (adjust res according to the scale of your data!)
+v_gillnet_r <- terra::rast(
+  terra::ext(v_gillnet_m),
+  res = 500,          # pixel size in meters
+  crs = terra::crs(v_gillnet_m))
+
+v_driftnet_r <- terra::rast(
+  terra::ext(v_driftnet_m),
+  res = 500,          
+  crs = terra::crs(v_driftnet_m))
+
+# Rasterize and sum overlapping polygons
+gillnet_overlap_r <- terra::rasterize(
+  v_gillnet_m,
+  v_gillnet_r,
+  field = "Rating",
+  fun = "sum",
+  background = NA)
+
+driftnet_overlap_r <- terra::rasterize(
+  v_driftnet_m,
+  v_driftnet_r,
+  field = "Rating",
+  fun = "sum",
+  background = NA)
+
+# Plot result
+par(mfrow = c(1,2))
+terra::plot(gillnet_overlap_r, main = "Gillnet overlaps")
+terra::plot(driftnet_overlap_r, main = "Driftnet overlaps")
+```
+
+The next step is to reclassify these fishery overlap maps into three ordinal categories.
+
+```{r}
+# Build reclassification matrices
+gillnet_re_mat <- reclass_matrix(gillnet_overlap_r, exclude_lowest = FALSE)
+driftnet_re_mat <- reclass_matrix(driftnet_overlap_r, exclude_lowest = FALSE)
+
+# Reclassify maps
+gillnet_hotspots <- terra::classify(gillnet_overlap_r, gillnet_re_mat, include.lowest = TRUE)
+driftnet_hotspots <- terra::classify(driftnet_overlap_r, driftnet_re_mat, include.lowest = TRUE)
+
+# Plot reclassified maps
+par(mfrow = c(1,2))
+terra::plot(gillnet_hotspots, main = "Gillnet hotspots")
+terra::plot(driftnet_hotspots, main = "Driftnet hotspots")
+```
+
+Nice! Now we have our maps almost ready to go. We still have to harmonize their coordinates, extensions, and resolution. Luckly, **risa** has a function for that called *byra_prep()*. All we need to do is build two named lists, one for species and the other for stressors. We have to pay attention on how we name each map, since the names must match the names in the criteria table. The names in the criteria table for species are `Sea lion` and `Seal`, and for stressors are `Gillnet` and `Driftnet`. 
+
+```{r}
+# Preparing input lists
+species_list <- list(`Sea lion` = sea_lion_kde,
+                     Seal = seal_rast_rec)
+
+stressor_list <- list(Gillnet = gillnet_hotspots,
+                      Driftnet = driftnet_hotspots)
+
+# Harmonize maps for ByRA
+byra_input <- byra_prep(species_list, stressor_list, quiet = FALSE)
+```
+
+The function *byra_prep()* not only harmonize all input maps to a common template (same CRS, extension and resolution), but it also computes other input maps used in the HRA model, such as the reclassified overlaps between species and stressor maps. The output of *byra_prep()* is a "risaMaps" object, a list-type object used in **risa** for several functions, such as *risaplot()*
+
+```{r}
+risaplot(byra_input)
+```
 
 ## References
 

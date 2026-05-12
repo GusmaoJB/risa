@@ -123,11 +123,8 @@ byra_prep <- function(spp_maplist, str_maplist,
   }
   if (is.null(names(str_list))) {
     if (!quiet) warning("str_maplist has no names. Please provide a named list (e.g., list(Gillnet = map3)).")
-    names(spp_list) <- paste0("species_", seq_along(spp_list))
+    names(str_list) <- paste0("stressor_", seq_along(str_list))
   }
-
-
-  if (is.null(names(str_list))) names(str_list) <- paste0("stressor_", seq_along(str_list))
 
   # Helpers
   # Small helper opperator
@@ -570,5 +567,3 @@ byra_prep <- function(spp_maplist, str_maplist,
   class(output) <- c("risaMaps", class(output))
   output
 }
-
-

@@ -196,7 +196,7 @@ quick_byra <- function(x,
 
   # Define number of overlaping stressors
   if (is.null(n_overlap)) {
-    stressors <- unique(sample_crit$STRESSOR)
+    stressors <- unique(na.omit(sample_crit$STRESSOR))
     n_overlap <- length(stressors)
   }
 

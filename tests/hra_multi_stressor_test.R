@@ -6,6 +6,8 @@ library(risa)
 library(sf)
 library(terra)
 
+
+
 # Loading real data
 avist_data <- read.csv("/home/jojo/Documents/pontal_projects/megacost/avistagens_atualizadas.csv")
 sg_data <- avist_data[avist_data$sp == "sg", c("Easting", "Northing", "tam_max", "id_grupo", "data", "area_code", "best_transect")]
@@ -16,14 +18,43 @@ sg_data_cleaner <- sg_data_clean[,c("Easting", "Northing", "tam_max")]
 
 # Creating test data
 set.seed(12)
-spp_df <- rbind(data.frame(long = rnorm(80, 0, 1),
-                           lat = rnorm(80, 0, 1), species = "species1"),
-                data.frame(long = rnorm(60, 0, 1),
-                           lat = rnorm(60, 0, 1), species = "species2"))
-str_df <- rbind(data.frame(long = rnorm(100, 0, 0.8),
-                           lat = rnorm(100, 0, 1), stressor = "stressor1"),
-                data.frame(long = rnorm(50, 0, 1),
-                           lat = rnorm(100, 0, 0.7), stressor = "stressor2"))
+spp_df <- rbind(data.frame(long = rnorm(80, 0, 0.2),
+                           lat = rnorm(80, 0, 0.2), species = "species1"),
+                data.frame(long = rnorm(60, 0, 0.2),
+                           lat = rnorm(60, 0, 0.2), species = "species2"))
+str_df <- rbind(data.frame(long = rnorm(100, 0, 0.18),
+                           lat = rnorm(100, 0, 0.2), stressor = "stressor1"),
+                data.frame(long = rnorm(50, 0, 0.2),
+                           lat = rnorm(100, 0, 0.17), stressor = "stressor2"))
+
+#write.csv(spp_df, "species_input.csv", row.names = FALSE)
+#write.csv(str_df, "stressor_input.csv", row.names = FALSE)
+
+
+set.seed(555)
+seal_df <- data.frame(long = rnorm(100, 0, 0.15),
+                      lat = rnorm(100, 0, 0.2), species = "Seal")
+set.seed(444)
+groups <- sample(c(1:21), size = 90, replace = TRUE, prob = seq(from = 100, to = 1, length.out = 21))
+sea_lion_df <- data.frame(long = rnorm(90, 0, 0.2),
+                          lat = rnorm(90, 0, 0.16),
+                          species = "Sea lion",
+                          group_size = groups)
+
+str_df2 <- rbind(data.frame(long = rnorm(100, 0, 0.18),
+                           lat = rnorm(100, 0, 0.2), stressor = "stressor1"),
+                data.frame(long = rnorm(50, 0.2, 0.2),
+                           lat = rnorm(50, 0, 0.17), stressor = "stressor2"),
+                data.frame(long = rnorm(70, 0, 01),
+                           lat = rnorm(70, -0.1, 0.17), stressor = "stressor3"))
+
+seal_kde <- get_class_kernel(seal_df, continuous = TRUE, output_min = 0, n_classes = 1)
+terra::plot(seal_kde)
+
+#terra::writeRaster(seal_kde, "/home/jojo/Documents/pontal_projects/risa2/tests/data/seal_hotspots.tif", overwrite = TRUE)
+
+write.csv(sea_lion_df, "/home/jojo/Documents/pontal_projects/risa2/tests/data/sea_lion_df.csv", row.names = FALSE)
+
 
 test_data1 <- spp_df[spp_df$species == "species1",]
 test_data2 <- test_data1[1:30,]
@@ -97,12 +128,16 @@ crit_list <- criteria_reshape(df)
 
 crit_list <- criteria_reshape(df)
 crit_dat <- check_criteria(crit_list[[1]])
-stressors <- unique(crit_dat$STRESSOR)
+stressors <- unique(na.omit(crit_dat$STRESSOR))
 n_overlap <- length(stressors)
 n_overlap
 
 # Risa prep
-input_maps <- risa_prep(spp_df, str_df)
+input_maps <- risa_prep(spp_df, str_df, area_strategy = "union", quiet=FALSE)
+
+
+input_maps <- risa_prep(spp_df, str_df, radius = c(4000, 2000, 5000, 1000))
+risaplot(input_maps)
 input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
 
 input_maps$species_kernel_maps$species1
@@ -112,7 +147,12 @@ input_maps$species_distributions$species1
 #risa::export_maps(input_maps, out_dir = "/home/jojo/Documents/pontal_projects/risa_example_maps")
 
 # Create kernel maps of species and stressor distributions and overlap maps
-risa_maps <- risa_prep(spp_df, str_df, quiet=FALSE)
+risa_maps <- risa_prep(spp_df, str_df, radius = c(species1 = 5000,
+                                                  species2 = 3000,
+                                                  stressor1 = 6000,
+                                                  stressor2 = 4000),
+                       area_strategy = "union",
+                       quiet=FALSE)
 
 risa_maps$species_kernel_maps$species1
 risa_maps$species_distributions$species1
@@ -146,13 +186,12 @@ spp_dist <- list(species1 = risa_maps$species_distributions$species1$raster,
                  species2 = risa_maps$species_distributions$species2$raster)
 
 
-
 # single value for all stressors, linear decay within 10 km
 res <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]],
           equation = "multiplicative",
           r_max = 3, n_overlap = 2, quiet = FALSE)
 
-res2 <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]])
+res2 <- hra(rast_list[[1]], spp_dist[[1]], crit_list[[1]], quiet=FALSE)
 
 # per-stressor buffers (named)
 res_2_2 <- hra(rast_list, spp_dist, crit_list,
@@ -165,6 +204,24 @@ res_2_2 <- hra(rast_list, spp_dist, crit_list,
 head(spp_df)
 
 output <- quick_byra(spp_df, str_df, df, quiet = FALSE)
+spp_df$group_size <- sample(c(0:12), length(spp_df$species), replace = TRUE)
+
+spp_df <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/species_input.csv")
+str_df <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/stressor_input.csv")
+criteria2 <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/criteria.csv")
+
+byra2 <- quick_byra(spp_df, str_df, criteria2,
+                    area_strategy = "union",
+                    radius = c(Dolphin = 5000,
+                               Turtle = 3000,
+                               Gillnet = 6000,
+                               Trawling = 4000),
+                    group_size_x = "group_size",
+                    equation = "multiplicative",
+                    decay = "linear",
+                    buffer_m = c(Gillnet = 3000,
+                                 Trawling = 2000),
+                    quiet = FALSE)
 
 crit_list <- criteria_reshape(df)
 stressors <- unique(crit_list[[1]]$STRESSOR)

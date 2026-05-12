@@ -57,8 +57,13 @@ rescaled rasters. Default is `FALSE`.}
 are `"raster"` (generate only `SpatRaster` maps), or `"both"` (generates `SpatRaster` and `sf` vector ["shp"] maps). Default is `"raster"`. Ignored when
 `continuous = TRUE`.}
 
-\item{radius}{Numeric or `NULL`. KDE bandwidth in projected units. If
-`NULL`, the bandwidth is estimated using `radius_method`.}
+\item{radius}{Numeric vector or `NULL`. KDE bandwidth in projected units.
+If `NULL`, the bandwidth is estimated using `radius_method`. If a single
+numeric value is provided, the same bandwidth is used for all species and
+stressor layers. If a numeric vector is provided, it must contain one value
+for each species and stressor layer. Named vectors are matched to layer
+names; unnamed vectors are assumed to follow the order of species layers
+first, followed by stressor layers.}
 
 \item{radius_method}{Character. Method used to estimate `radius` when
 `radius = NULL`. Options are `"nndist"`, `"nrd"`,

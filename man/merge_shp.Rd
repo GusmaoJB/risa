@@ -4,28 +4,74 @@
 \alias{merge_shp}
 \title{Merge a list of sf layers}
 \usage{
-merge_shp(shp_list, group_size = NULL, output = c("sf_union", "points"))
+merge_shp(shp_list, output = c("sf", "coords", "union"))
 }
 \arguments{
-\item{shp_list}{list of sf objects}
+\item{shp_list}{A non-empty list of `sf` objects.}
 
-\item{group_size}{optional column name to carry into points mode (old behavior)}
-
-\item{return}{one of c("sf_union","points") — default "sf_union" for risa_prep()}
+\item{output}{Character. Output type. One of `"sf"`, `"coords"`, or
+`"union"`. If `"sf"`, the input layers are combined into a single `sf`
+object using row binding. If `"coords"`, a `data.frame` with the coordinates
+of all geometries is returned. If `"union"`, all geometries are dissolved
+into a single union geometry using `sf::st_union()`.}
 }
 \value{
-if return = "sf_union": an sf with dissolved geometry (union of inputs)
-        if return = "points":   a data.frame of XY (old behavior)
+Depending on `output`, returns:
+
+* `"sf"`: a single `sf` object containing all input features.
+* `"coords"`: a `data.frame` with columns `X`, `Y`, and `group`.
+* `"union"`: an `sf` object containing the dissolved union of all input
+  geometries.
 }
 \description{
-Merge a list of sf layers
+Combines multiple `sf` objects stored in a list into a single object. By
+default, the function performs a simple row-wise merge of the input layers,
+keeping all geometries as independent features. Attribute columns that are not
+shared among all input layers are preserved and filled with `NA` where absent.
+}
+\details{
+The function can also return a coordinate table or, if explicitly requested,
+perform a spatial union of all geometries. The union option should be used with
+care because `sf::st_union()` performs a topological dissolve and may be slow
+or memory-intensive for large or complex geometries.
+
+All input layers are transformed to the CRS of the first element in
+`shp_list`, when possible. If an input layer has no CRS, it is kept as-is and
+a warning is issued.
+
+
+The `"sf"` option performs a simple merge and is usually the appropriate
+choice when the goal is to combine species, stressor, or other spatial layers
+into a single object without changing the geometries. Unlike `base::rbind()`,
+this implementation uses `dplyr::bind_rows()`, allowing input layers to have
+different attribute columns.
+
+The `"coords"` option extracts the coordinates of all input geometries using
+`sf::st_coordinates()` and returns them as a regular `data.frame`. A `group`
+column is added using the names of `shp_list`, or the list index when names
+are not available.
+
+The `"union"` option applies `sf::st_union()` to the merged geometries. This
+is a spatial/topological operation, not a simple merge, and can consume large
+amounts of memory for large datasets.
 }
 \examples{
 # Create test data
-vec1 <- df_to_shp(data.frame(long = c(1,2,2,4), lat = c(4,4,2,2)))
-vec2 <- df_to_shp(data.frame(long = c(2,5,4,6), lat = c(4,4,2,2)))
-vec_list <- list(vec1, vec2)
+vec1 <- df_to_shp(data.frame(long = c(1, 2, 2, 4),
+                             lat  = c(4, 4, 2, 2)))
 
-# Convert vector list into data.frame
-df <- merge_shp(vec_list)
+vec2 <- df_to_shp(data.frame(long = c(2, 5, 4, 6),
+                             lat  = c(4, 4, 2, 2)))
+
+vec_list <- list(species1 = vec1, species2 = vec2)
+
+# Merge into a single sf object
+shp <- merge_shp(vec_list, output = "sf")
+
+# Extract coordinates as a data.frame
+coords <- merge_shp(vec_list, output = "coords")
+
+# Dissolve all geometries into a single union geometry
+union_shp <- merge_shp(vec_list, output = "union")
+
 }

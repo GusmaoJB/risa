@@ -354,7 +354,7 @@ hra <- function(
   # Basic messages
   if (!quiet) {
     crit_dat <- check_criteria(criteria)
-    stressors <- unique(crit_dat$STRESSOR)
+    stressors <- unique(na.omit(crit_dat$STRESSOR))
     message(paste("Risk equation:", equation))
     message(paste("Max Rating score:", r_max))
     message(paste("Number of overlaping stressors:",

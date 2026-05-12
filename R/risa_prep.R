@@ -50,8 +50,13 @@
 #' @param output_layer_type Character. Output type for discrete maps. Options
 #'   are `"raster"` (generate only `SpatRaster` maps), or `"both"` (generates `SpatRaster` and `sf` vector ["shp"] maps). Default is `"raster"`. Ignored when
 #'   `continuous = TRUE`.
-#' @param radius Numeric or `NULL`. KDE bandwidth in projected units. If
-#'   `NULL`, the bandwidth is estimated using `radius_method`.
+#' @param radius Numeric vector or `NULL`. KDE bandwidth in projected units.
+#'   If `NULL`, the bandwidth is estimated using `radius_method`. If a single
+#'   numeric value is provided, the same bandwidth is used for all species and
+#'   stressor layers. If a numeric vector is provided, it must contain one value
+#'   for each species and stressor layer. Named vectors are matched to layer
+#'   names; unnamed vectors are assumed to follow the order of species layers
+#'   first, followed by stressor layers.
 #' @param radius_method Character. Method used to estimate `radius` when
 #'   `radius = NULL`. Options are `"nndist"`, `"nrd"`,
 #'   `"std_distance_scaled"`, `"ppl"`, and `"fixed"`.
@@ -257,13 +262,19 @@ risa_prep <- function(
   # When continuous = TRUE, force output_layer_type to "raster"
   kernel_output_type <- if (continuous) "raster" else output_layer_type
 
-  build_kernels <- function(lst, group_size = NULL, ncls = n_classes) {
+  build_kernels <- function(lst, group_size = NULL, ncls = n_classes, rad = NULL) {
+
+    rad_vals <- rad
     nms <- names(lst)
 
     if (is.null(nms)) {
       nms <- paste0("item_", seq_along(lst))
     } else {
       nms[nms == ""] <- paste0("item_", which(nms == ""))
+    }
+
+    if (!is.null(rad_vals)) {
+      names(rad_vals) <- nms
     }
 
     out <- Map(function(item, nm) {
@@ -276,7 +287,7 @@ risa_prep <- function(
         n_classes = ncls,
         output_min = output_min,
         output_layer_type = kernel_output_type,
-        radius = radius,
+        radius = if (is.null(rad_vals)) NULL else rad_vals[nm],
         radius_method = radius_method,
         group_size = group_size,
         pixel_size = pixel_size,
@@ -333,9 +344,63 @@ risa_prep <- function(
     })
   }
 
+  # Checking radius
+  spp_nms <- names(spp_list)
+  str_nms <- names(str_list)
+
+  if (is.null(spp_nms)) spp_nms <- paste0("sp", seq_along(spp_list))
+  if (is.null(str_nms)) str_nms <- paste0("stressor", seq_along(str_list))
+
+  all_nms <- c(spp_nms, str_nms)
+
+  spp_rad <- radius
+  str_rad <- radius
+
+  if (!is.null(radius) && length(radius) > 1) {
+
+    if (!quiet) message("Multiple radius values provided for KDE.")
+
+    if (length(radius) != length(all_nms)) {
+      stop(
+        "Number of radius values does not match the total number of species and stressor items.\n",
+        "Expected ", length(all_nms), " values, but received ", length(radius), ".\n",
+        "Provide either a single numeric radius or one value for each species and stressor."
+      )
+    }
+
+    if (is.null(names(radius)) || any(names(radius) == "")) {
+
+      if (!quiet) {
+        message(
+          "Unnamed radius vector provided. Assuming first values refer to species ",
+          "and later values refer to stressors."
+        )
+      }
+
+      spp_rad <- radius[seq_along(spp_nms)]
+      names(spp_rad) <- spp_nms
+
+      str_rad <- radius[length(spp_nms) + seq_along(str_nms)]
+      names(str_rad) <- str_nms
+
+    } else {
+
+      if (!all(names(radius) %in% all_nms)) {
+        stop(
+          "Some names in `radius` do not match species or stressor names.\n",
+          "Expected names: ", paste(all_nms, collapse = ", "), "\n",
+          "Received names: ", paste(names(radius), collapse = ", ")
+        )
+      }
+
+      spp_rad <- radius[spp_nms]
+      str_rad <- radius[str_nms]
+    }
+  }
+
   # Performing KDEs with n_classes
-  spp_kernel_list <- build_kernels(spp_list, group_size = group_size_x, ncls = n_classes)
-  stressor_kernel_list <- build_kernels(str_list, group_size = group_size_y, ncls = n_classes)
+  spp_kernel_list <- build_kernels(spp_list, group_size = group_size_x, ncls = n_classes, rad = spp_rad)
+  stressor_kernel_list <- build_kernels(str_list, group_size = group_size_y, ncls = n_classes, rad = str_rad)
 
   # Standardize lists when continuous = TRUE
   spp_kernel_list <- .standardize_kernel_list(spp_kernel_list)

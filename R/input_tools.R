@@ -1,91 +1,145 @@
 #' Merge a list of sf layers
 #'
-#' @param shp_list list of sf objects
-#' @param group_size optional column name to carry into points mode (old behavior)
-#' @param return one of c("sf_union","points") — default "sf_union" for risa_prep()
-#' @return if return = "sf_union": an sf with dissolved geometry (union of inputs)
-#'         if return = "points":   a data.frame of XY (old behavior)
+#' Combines multiple `sf` objects stored in a list into a single object. By
+#' default, the function performs a simple row-wise merge of the input layers,
+#' keeping all geometries as independent features. Attribute columns that are not
+#' shared among all input layers are preserved and filled with `NA` where absent.
+#'
+#' The function can also return a coordinate table or, if explicitly requested,
+#' perform a spatial union of all geometries. The union option should be used with
+#' care because `sf::st_union()` performs a topological dissolve and may be slow
+#' or memory-intensive for large or complex geometries.
+#'
+#' All input layers are transformed to the CRS of the first element in
+#' `shp_list`, when possible. If an input layer has no CRS, it is kept as-is and
+#' a warning is issued.
+#'
+#' @param shp_list A non-empty list of `sf` objects.
+#' @param output Character. Output type. One of `"sf"`, `"coords"`, or
+#'   `"union"`. If `"sf"`, the input layers are combined into a single `sf`
+#'   object using row binding. If `"coords"`, a `data.frame` with the coordinates
+#'   of all geometries is returned. If `"union"`, all geometries are dissolved
+#'   into a single union geometry using `sf::st_union()`.
+#'
+#' @return
+#' Depending on `output`, returns:
+#'
+#' * `"sf"`: a single `sf` object containing all input features.
+#' * `"coords"`: a `data.frame` with columns `X`, `Y`, and `group`.
+#' * `"union"`: an `sf` object containing the dissolved union of all input
+#'   geometries.
+#'
+#' @details
+#' The `"sf"` option performs a simple merge and is usually the appropriate
+#' choice when the goal is to combine species, stressor, or other spatial layers
+#' into a single object without changing the geometries. Unlike `base::rbind()`,
+#' this implementation uses `dplyr::bind_rows()`, allowing input layers to have
+#' different attribute columns.
+#'
+#' The `"coords"` option extracts the coordinates of all input geometries using
+#' `sf::st_coordinates()` and returns them as a regular `data.frame`. A `group`
+#' column is added using the names of `shp_list`, or the list index when names
+#' are not available.
+#'
+#' The `"union"` option applies `sf::st_union()` to the merged geometries. This
+#' is a spatial/topological operation, not a simple merge, and can consume large
+#' amounts of memory for large datasets.
+#'
 #' @importFrom sf st_crs st_transform st_geometry st_as_sf st_union st_coordinates
+#' @importFrom dplyr bind_rows
+#'
 #' @examples
 #' # Create test data
-#' vec1 <- df_to_shp(data.frame(long = c(1,2,2,4), lat = c(4,4,2,2)))
-#' vec2 <- df_to_shp(data.frame(long = c(2,5,4,6), lat = c(4,4,2,2)))
-#' vec_list <- list(vec1, vec2)
+#' vec1 <- df_to_shp(data.frame(long = c(1, 2, 2, 4),
+#'                              lat  = c(4, 4, 2, 2)))
 #'
-#' # Convert vector list into data.frame
-#' df <- merge_shp(vec_list)
+#' vec2 <- df_to_shp(data.frame(long = c(2, 5, 4, 6),
+#'                              lat  = c(4, 4, 2, 2)))
+#'
+#' vec_list <- list(species1 = vec1, species2 = vec2)
+#'
+#' # Merge into a single sf object
+#' shp <- merge_shp(vec_list, output = "sf")
+#'
+#' # Extract coordinates as a data.frame
+#' coords <- merge_shp(vec_list, output = "coords")
+#'
+#' # Dissolve all geometries into a single union geometry
+#' union_shp <- merge_shp(vec_list, output = "union")
+#'
 #' @export
-merge_shp <- function(shp_list, group_size = NULL, output = c("sf_union","points")) {
+merge_shp <- function(shp_list, output = c("sf", "coords", "union")) {
   output <- match.arg(output)
 
   if (!is.list(shp_list) || length(shp_list) == 0L) {
     stop("`shp_list` must be a non-empty list of sf objects.")
   }
+
   if (!all(vapply(shp_list, inherits, logical(1), what = "sf"))) {
     stop("All elements of `shp_list` must be sf objects.")
   }
 
-  # Union to a single sf geometry
-  if (output == "sf_union") {
-    # Harmonize CRS to the first layer
-    crs0 <- sf::st_crs(shp_list[[1]])
-    shp_list <- lapply(shp_list, function(s) {
-      crsS <- sf::st_crs(s)
-      same <- !is.na(crsS) && !is.na(crs0) && identical(crsS$wkt, crs0$wkt)
-      if (!same) sf::st_transform(s, crs0) else s
+  crs0 <- sf::st_crs(shp_list[[1]])
+
+  shp_list <- lapply(shp_list, function(s) {
+    crsS <- sf::st_crs(s)
+
+    if (is.na(crs0)) return(s)
+
+    if (is.na(crsS)) {
+      warning("One input layer has no CRS. It was kept as-is.")
+      return(s)
+    }
+
+    if (crsS != crs0) {
+      s <- sf::st_transform(s, crs0)
+    }
+
+    s
+  })
+
+  nm <- names(shp_list)
+
+  shp_list <- Map(function(s, i) {
+    group_name <- if (!is.null(nm) && nzchar(nm[i])) nm[i] else as.character(i)
+    s$group <- group_name
+    s
+  }, shp_list, seq_along(shp_list))
+
+  if (output == "sf") {
+    return(dplyr::bind_rows(shp_list))
+  }
+
+  if (output == "coords") {
+    out_list <- lapply(shp_list, function(s) {
+      coords <- sf::st_coordinates(s)
+
+      if (nrow(coords) == nrow(s)) {
+        group <- s$group
+      } else if ("L1" %in% colnames(coords)) {
+        group <- s$group[coords[, "L1"]]
+      } else {
+        group <- rep(unique(s$group), nrow(coords))
+      }
+
+      data.frame(
+        X = coords[, 1],
+        Y = coords[, 2],
+        group = group,
+        stringsAsFactors = FALSE
+      )
     })
 
-    # Union all geometries and handle single-element list
-    geoms <- lapply(shp_list, sf::st_geometry)
-    geom_union <- if (length(geoms) == 1L) geoms[[1]] else Reduce(sf::st_union, geoms)
+    out <- do.call(rbind, out_list)
+    row.names(out) <- NULL
+    return(out)
+  }
 
-    # Wrap back to sf
+  if (output == "union") {
+    merged <- dplyr::bind_rows(shp_list)
+    geom_union <- sf::st_union(sf::st_geometry(merged))
     return(sf::st_as_sf(geom_union))
   }
-
-  # Checks if CRSs differ
-  crs_keys <- vapply(shp_list, function(s) {
-    crs <- sf::st_crs(s)
-    if (!is.null(crs$epsg)) paste0("epsg:", crs$epsg) else if (!is.null(crs$wkt)) crs$wkt else "NA"
-  }, character(1))
-  if (length(unique(crs_keys)) > 1L) {
-    warning("Input layers have different CRS; coordinates are kept as-is. Consider transforming beforehand.")
-  }
-
-  out_list <- vector("list", length(shp_list))
-  nm_list <- names(shp_list)
-
-  for (i in seq_along(shp_list)) {
-    shp <- shp_list[[i]]
-    group_name <- if (!is.null(nm_list) && nzchar(nm_list[i])) nm_list[i] else as.character(i)
-
-    # Coordinates for all vertices
-    coords <- sf::st_coordinates(shp)
-
-    df <- data.frame(
-      X = coords[, 1],
-      Y = coords[, 2],
-      group = rep(group_name, nrow(coords)),
-      stringsAsFactors = FALSE
-    )
-
-    if (!is.null(group_size) && group_size %in% names(shp)) {
-      geom <- sf::st_geometry(shp)
-
-      # count coordinates per feature
-      n_per_feat <- vapply(
-        geom,
-        function(g) nrow(sf::st_coordinates(g)),
-        integer(1L))
-
-      df[[group_size]] <- rep(shp[[group_size]], times = n_per_feat)
-    }
-    out_list[[i]] <- df
-  }
-
-  out <- do.call(rbind, out_list)
-  row.names(out) <- NULL
-  out
 }
 
 

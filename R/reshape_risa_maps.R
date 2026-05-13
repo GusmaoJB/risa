@@ -59,20 +59,28 @@ reshape_risa_maps <- function(risa_maps,
   if (!inherits(risa_maps, "risaMaps")) {
     stop("Input map list must be a 'risaMaps' object.")
   }
+
   if (missing(criteria_names)) {
     stop("`criteria_names` is required and must be a character vector of length 2.")
   }
+
   if (!is.character(criteria_names) || length(criteria_names) != 2L) {
-    stop("`criteria_names` must be a character vector of length 2, e.g. c('intensity','likelihood of interaction').")
+    stop("`criteria_names` must be a character vector of length 2, e.g. c('intensity', 'likelihood of interaction').")
   }
+
   if (any(!nzchar(criteria_names))) {
     stop("`criteria_names` cannot contain empty strings.")
   }
+
   if (anyDuplicated(criteria_names)) {
     stop("`criteria_names` must be unique.")
   }
 
-  # Helper
+  # Helpers
+  `%||%` <- function(a, b) {
+    if (is.null(a)) b else a
+  }
+
   get2 <- function(x, path) {
     for (p in path) {
       if (is.null(x) || is.null(x[[p]])) return(NULL)
@@ -80,29 +88,72 @@ reshape_risa_maps <- function(risa_maps,
     }
     x
   }
-  `%||%` <- function(a, b) if (is.null(a)) b else a
+
+  get_raster <- function(x) {
+    if (inherits(x, "SpatRaster")) {
+      return(x)
+    }
+
+    if (is.list(x) && !is.null(x$raster) && inherits(x$raster, "SpatRaster")) {
+      return(x$raster)
+    }
+
+    return(NULL)
+  }
 
   # Discover available keys
-  species_all <- names(get2(risa_maps, c("overlap_maps"))) %||% character()
-  stressors_all <- names(get2(risa_maps, c("stressor_kernel_maps"))) %||% character()
-  if (length(species_all) == 0L || length(stressors_all) == 0L) return(list())
+  species_all <- names(risa_maps$overlap_maps) %||% character()
+  stressors_all <- names(risa_maps$stressor_kernel_maps) %||% character()
+
+  if (length(species_all) == 0L || length(stressors_all) == 0L) {
+    return(list())
+  }
 
   # Optional filters
-  species <- if (is.null(only_species)) species_all else intersect(species_all, only_species)
-  stressors <- if (is.null(only_stressors)) stressors_all else intersect(stressors_all, only_stressors)
+  species <- if (is.null(only_species)) {
+    species_all
+  } else {
+    intersect(species_all, only_species)
+  }
+
+  stressors <- if (is.null(only_stressors)) {
+    stressors_all
+  } else {
+    intersect(stressors_all, only_stressors)
+  }
 
   # Build output
   out <- setNames(lapply(species, function(sp) {
+
     per_sp <- lapply(stressors, function(st) {
-      exposure <- get2(risa_maps, c("stressor_kernel_maps", st, "raster"))
-      overlap <- get2(risa_maps, c("overlap_maps", sp, st, "raster"))
-      if (is.null(exposure) || is.null(overlap)) return(NULL)
-      stats::setNames(list(exposure, overlap), criteria_names)
+
+      exposure_obj <- get2(risa_maps, c("stressor_kernel_maps", st))
+      overlap_obj  <- get2(risa_maps, c("overlap_maps", sp, st))
+
+      exposure <- get_raster(exposure_obj)
+      overlap  <- get_raster(overlap_obj)
+
+      if (is.null(exposure) || is.null(overlap)) {
+        return(NULL)
+      }
+
+      stats::setNames(
+        list(exposure, overlap),
+        criteria_names
+      )
     })
+
     names(per_sp) <- stressors
-    per_sp <- per_sp[!vapply(per_sp, is.null, FALSE)]
-    if (length(per_sp) == 0L) NULL else per_sp
+
+    per_sp <- per_sp[!vapply(per_sp, is.null, logical(1))]
+
+    if (length(per_sp) == 0L) {
+      NULL
+    } else {
+      per_sp
+    }
+
   }), species)
 
-  out[!vapply(out, is.null, FALSE)]
+  out[!vapply(out, is.null, logical(1))]
 }

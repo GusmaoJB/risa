@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document id="root_doc">
+<Schema name="fisherman2" id="fisherman2">
+	<SimpleField name="fisherman" type="string"></SimpleField>
+</Schema>
+<Folder><name>fisherman2</name>
+  <Placemark id="fisherman2.1">
+	<Style><LineStyle><color>ff0000ff</color></LineStyle><PolyStyle><fill>0</fill></PolyStyle></Style>
+	<ExtendedData><SchemaData schemaUrl="#fisherman2">
+		<SimpleData name="fisherman">fisherman2</SimpleData>
+	</SchemaData></ExtendedData>
+      <Polygon><outerBoundaryIs><LinearRing><coordinates>0.019332044166842,-0.348884358370082 0.363893752454717,-0.345453487126869 0.523221193359376,-0.311297069856487 0.592481313859379,-0.145161376797561 0.520686802315444,0.10062821322437 0.350122964976309,0.234414487810825 0.154588820459985,0.264693347431883 -0.011432865611978,0.248952406464596 -0.089458231362787,0.154371498307194 0.019332044166842,-0.348884358370082</coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+</Folder>
+</Document></kml>

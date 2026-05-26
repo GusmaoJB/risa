@@ -111,8 +111,25 @@ st_dat <- str_df[str_df$stressor == "stressor1",]
 r1 <- get_class_kernel(sp_dat)
 r2 <- get_class_kernel(st_dat, output_layer_type = "raster")
 
-terra::plot(r1)
-terra::plot(r2)
+
+
+cols <- hcl.colors(13, "Blues", rev=TRUE)
+cols <- cols[4:13]
+
+cols <- hcl.colors(13, "Reds")
+cols <- cols[1:10]
+
+terra::plot(r1,
+     col = rev(hcl.colors(100, "Viridis")))
+terra::plot(r2,
+     col=rev(hcl.colors(100, "Reds")))
+
+terra::plot(r2,
+            col=cols)
+terra::plot(r1,
+            col = hcl.colors(100, "YlOrRd", rev = TRUE))
+
+
 
 plot_kernel_points(sp_dat)
 plot_kernel_points(st_dat)

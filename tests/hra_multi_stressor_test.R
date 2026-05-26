@@ -1,6 +1,10 @@
 ############### Test Field ###############
 setwd("/home/jojo/Documents/pontal_projects/risa")
 library(devtools)
+library(pak)
+
+pak::pak("GusmaoJB/risa")
+?install_github()
 
 library(risa)
 library(sf)

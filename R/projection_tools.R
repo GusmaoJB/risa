@@ -91,8 +91,7 @@ guess_crs <- function(shp, lon = NULL, lat = NULL, quiet = TRUE) {
 #'   - `coordinates`: matrix from `st_coordinates()` for `sf`, or `NULL` for rasters
 #'   - `crs`: EPSG code (integer) if available, otherwise `NA_integer_`
 #'
-#' @importFrom sf st_crs st_set_crs st_coordinates st_transform st_geometry
-#'   st_bbox st_sfc st_point st_is_longlat st_as_sfc
+#' @importFrom sf st_crs st_set_crs st_coordinates st_transform st_geometry st_bbox st_sfc st_point st_is_longlat st_as_sfc
 #' @importFrom terra crs ext is.lonlat project xmin xmax ymin ymax is.int
 #' @export
 transform_to_metric <- function(

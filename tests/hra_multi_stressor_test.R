@@ -1,16 +1,14 @@
 ############### Test Field ###############
 setwd("/home/jojo/Documents/pontal_projects/risa")
 library(devtools)
-library(pak)
 
-pak::pak("GusmaoJB/risa")
-?install_github()
+#library(pak)
+#pak::pak("GusmaoJB/risa")
 
-library(risa)
 library(sf)
+library(risa)
 library(terra)
-
-
+library(ggplot2)
 
 # Loading real data
 avist_data <- read.csv("/home/jojo/Documents/pontal_projects/megacost/avistagens_atualizadas.csv")
@@ -53,12 +51,10 @@ str_df2 <- rbind(data.frame(long = rnorm(100, 0, 0.18),
                            lat = rnorm(70, -0.1, 0.17), stressor = "stressor3"))
 
 seal_kde <- get_class_kernel(seal_df, continuous = TRUE, output_min = 0, n_classes = 1)
-terra::plot(seal_kde)
 
 #terra::writeRaster(seal_kde, "/home/jojo/Documents/pontal_projects/risa2/tests/data/seal_hotspots.tif", overwrite = TRUE)
 
-write.csv(sea_lion_df, "/home/jojo/Documents/pontal_projects/risa2/tests/data/sea_lion_df.csv", row.names = FALSE)
-
+#write.csv(sea_lion_df, "/home/jojo/Documents/pontal_projects/risa2/tests/data/sea_lion_df.csv", row.names = FALSE)
 
 test_data1 <- spp_df[spp_df$species == "species1",]
 test_data2 <- test_data1[1:30,]
@@ -115,31 +111,10 @@ st_dat <- str_df[str_df$stressor == "stressor1",]
 r1 <- get_class_kernel(sp_dat)
 r2 <- get_class_kernel(st_dat, output_layer_type = "raster")
 
-
-
-cols <- hcl.colors(13, "Blues", rev=TRUE)
-cols <- cols[4:13]
-
-cols <- hcl.colors(13, "Reds")
-cols <- cols[1:10]
-
-terra::plot(r1,
-     col = rev(hcl.colors(100, "Viridis")))
-terra::plot(r2,
-     col=rev(hcl.colors(100, "Reds")))
-
-terra::plot(r2,
-            col=cols)
-terra::plot(r1,
-            col = hcl.colors(100, "YlOrRd", rev = TRUE))
-
-
-
 plot_kernel_points(sp_dat)
 plot_kernel_points(st_dat)
 
 overlap <- get_overlap_kernel(r1, r2, continuous = TRUE)
-terra::plot(overlap)
 
 #Load example data
 #path <- "C:/Users/gusma/Documents/research/test_hra/1sp_2stressors.csv"
@@ -150,19 +125,15 @@ crit_list <- criteria_reshape(df)
 crit_list <- criteria_reshape(df)
 crit_dat <- check_criteria(crit_list[[1]])
 stressors <- unique(na.omit(crit_dat$STRESSOR))
-n_overlap <- length(stressors)
-n_overlap
 
 # Risa prep
 input_maps <- risa_prep(spp_df, str_df, area_strategy = "union", quiet=FALSE)
-
+risaplot2(input_maps, raw_ggplot = TRUE, area_of_interest = FALSE)
 
 input_maps <- risa_prep(spp_df, str_df, radius = c(4000, 2000, 5000, 1000))
 risaplot(input_maps)
-input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
 
-input_maps$species_kernel_maps$species1
-input_maps$species_distributions$species1
+input_maps_single <- risa_prep(spp_df[,-3], str_df[,-3])
 
 #export
 #risa::export_maps(input_maps, out_dir = "/home/jojo/Documents/pontal_projects/risa_example_maps")
@@ -224,7 +195,11 @@ res_2_2 <- hra(rast_list, spp_dist, crit_list,
 
 head(spp_df)
 
+library(purrr)
+
 output <- quick_byra(spp_df, str_df, df, quiet = FALSE)
+risaplot4(output, raw_ggplot = TRUE, area_of_interest = FALSE)
+
 spp_df$group_size <- sample(c(0:12), length(spp_df$species), replace = TRUE)
 
 spp_df <- read.csv("/home/jojo/Documents/pontal_projects/risa2/tests/data/species_input.csv")
@@ -263,19 +238,6 @@ risaplot(test2)
 
 r_stack <- terra::rast(input_maps$species_distributions)
 
-input_maps$species_distributions$species1
-
 raster_list <- reshape_risa_maps(input_maps, crit_names)
 species_distr <- input_maps$species_distributions
-
-"area_of_interest" %in% names(byra_test)
-
-terra::plot(byra_test$species1$stressor1$E_criteria)
-terra::plot(byra_test$species1$stressor1$C_criteria)
-
-byra_test$summary_stats
-terra::plot(byra_test$ecosys_risk_raw)
-terra::plot(byra_test$ecosys_risk_classified)
-
-
 

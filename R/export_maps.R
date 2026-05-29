@@ -109,7 +109,7 @@ export_maps <- function(
   } else if (inherits(x, "sf") || inherits(x, "sfc")) {
     write_vector_safely(x, base_name)
 
-  } else if (is.list(x)) {
+  } else if (is.list(x) && !inherits(x, "data.frame")) {
     nms <- names(x)
     for (i in seq_along(x)) {
       nm <- if (!is.null(nms) && nzchar(nms[i])) nms[i] else sprintf("item_%02d", i)
@@ -124,8 +124,6 @@ export_maps <- function(
       )
     }
 
-  } else {
-    message("Skipping unrecognized object at: ", paste(path, collapse = "$"))
   }
 
   # Zip only once at the top level

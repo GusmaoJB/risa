@@ -151,7 +151,46 @@ byra3 <- quick_byra(byra_input,
                     quiet = FALSE,
                     return_crs = "4326")
 
-hra(byra_input, )
+# This time, we ask for decimal degrees by setting return_crs = "4326"
+byra4 <- quick_byra(byra_input,
+                    criteria = criteria2,
+                    equation = "euclidean",
+                    return_crs = "4326",
+                    quiet = FALSE)
 
-byra_input
+# Loading the packages (install if you don't have them)
+library(geodata)
+library(ggspatial)
+
+# Load world map data
+world_map <- geodata::world(resolution = 3, path = "data/")
+
+# We don't need all the countries, so we extract only what we need
+ghana <- world_map[world_map$NAME_0 %in% c("Ghana"), ]
+
+# Convert it to an sf vector, so it is easier to plot with ggplot2
+ghana_sf <- st_as_sf(ghana)
+
+# Making ggplot-type risk maps with risaplot
+risk_plots <- risaplot(byra4, area_of_interest = FALSE)
+byra4$area_of_interest
+
+library(geodata)
+ghana_adm <- gadm(country = "GHA", level = 2, path = tempdir())  # level varies by country
+ghana_adm2 <- gadm(country = "GHA", level = 1, path = tempdir())
+ghana_adm_sf <- st_as_sf(ghana_adm)
+ghana_adm2_sf <- st_as_sf(ghana_adm2)
+
+risk_plots[[6]] +
+  geom_sf(data=ghana_sf, fill="gray", col="black") +
+  geom_sf(data=ghana_adm_sf, fill="#00000000", col="gray50") +
+  geom_sf_text(data=ghana_adm2_sf, aes(label = NAME_1), size = 2) +
+  coord_sf(xlim=c(-1,1),
+           ylim=c(4,6)) +
+  annotation_scale(position="br")
+
+
+
+
+
 

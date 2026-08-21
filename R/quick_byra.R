@@ -216,6 +216,11 @@ quick_byra <- function(x,
   # Outputs
   output <- byra_hra
   output[["kde_maps"]] <- input_maps
-  output$area_of_interest <- input_maps$area_of_interest
+  if (return_crs == "4326") {
+    output$area_of_interest <- convert_to_decimal_degrees(input_maps$area_of_interest)
+  } else {
+    output$area_of_interest <- input_maps$area_of_interest
+  }
+
   return(output)
 }

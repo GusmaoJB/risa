@@ -149,9 +149,13 @@
 #' terra::plot(many_test$species2$total_raw)
 #' @export
 hra <- function(
-    raster_list, species_distr, criteria,
+    raster_list,
+    species_distr,
+    criteria,
     equation = c("euclidean","multiplicative"),
-    r_max = 3, n_overlap = NULL, output_decimal_crs = FALSE,
+    r_max = 3,
+    n_overlap = NULL,
+    output_decimal_crs = FALSE,
     decay = c("none", "linear", "exponential",
               "polynomial_2nd", "polynomial_3rd",
               "complementary_decay_2nd", "complementary_decay_3rd"),
@@ -337,7 +341,8 @@ hra <- function(
     res$summary_stats <- compute_summary_stats_single(res, total_raw, total_hotspots_cls)
 
     if (isTRUE(output_decimal_crs)) {
-      for (st in names(res)) if (is.list(res[[st]])) {
+      message("User wants decimal CRS for outputs. Transforming layers...")
+      for (st in names(res)) if (is.list(res[[st]]) && !is.data.frame(res[[st]])) {
         for (nm in c("E_criteria","C_criteria","Risk_map_raw","Risk_map")) {
           res[[st]][[nm]] <- convert_to_decimal_degrees(res[[st]][[nm]])
         }
@@ -471,12 +476,14 @@ hra <- function(
 
   if (isTRUE(output_decimal_crs)) {
     for (sp in species) {
-      for (nm in names(out[[sp]])) if (is.list(out[[sp]][[nm]])) {
-        for (k in c("E_criteria","C_criteria","Risk_map_raw","Risk_map")) {
-          out[[sp]][[nm]][[k]] <- convert_to_decimal_degrees(out[[sp]][[nm]][[k]])
+      for (nm in names(out[[sp]])) {
+        if (is.list(out[[sp]][[nm]]) && !is.data.frame(out[[sp]][[nm]])) {
+          for (k in c("E_criteria","C_criteria","Risk_map_raw","Risk_map")) {
+            out[[sp]][[nm]][[k]] <- convert_to_decimal_degrees(out[[sp]][[nm]][[k]])
+          }
+        } else if (nm %in% c("total_raw", "total_reclassified", "total_hotspots_reclassified")) {
+          out[[sp]][[nm]] <- convert_to_decimal_degrees(out[[sp]][[nm]])
         }
-      } else if (nm %in% c("total_raw", "total_reclassified", "total_hotspots_reclassified")) {
-        out[[sp]][[nm]] <- convert_to_decimal_degrees(out[[sp]][[nm]])
       }
     }
     out$ecosys_risk_raw <- convert_to_decimal_degrees(out$ecosys_risk_raw)

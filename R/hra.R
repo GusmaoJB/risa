@@ -437,7 +437,7 @@ hra <- function(
 
   # Average over overlapping species only (sum / count), keep NA where count==0
   eco_raw <- terra::ifel(eco_cnt > 0, eco_sum / eco_cnt, NA)
-  names(byra4$ecosys_risk_raw) <- "Rating"
+  names(eco_raw$ecosys_risk_raw) <- "Rating"
 
   # Ensure zeros inside the union mask
   eco_raw <- terra::cover(eco_raw, terra::ifel(!is.na(eco_mask), 0, NA))

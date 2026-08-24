@@ -435,28 +435,38 @@ template <- ggplot() +
   theme_bw() +
   labs(x = "Longitude", y="Latitude")
 
-# Building the plots
-# Seal
 sp1 <- template +
   geom_tile(data=seal_total_df, aes(x=x, y=y, fill=Rating)) +
-  scale_color_gradientn(colors=spp_palette) +
+  scale_fill_gradientn(colors=spp_palette) + # set our color palette
   theme(panel.grid = element_blank(),
         legend.position = "none") + # we will omit the color guides in this one
-  ggtitle("a) Seal (total risk)") # Include a title
+  ggtitle("a) Seal (total risk)") + # Includes a title
+  annotation_scale(location = "br",
+                   height = unit(0.2, "cm")) +
+  theme_bw()  +
+  labs(x = "Longitude", y="Latitude")
 
 # Sea lion
 sp2 <- template +
   geom_tile(data=sealion_total_df, aes(x=x, y=y, fill=Rating)) +
-  scale_color_gradientn(colors=spp_palette) +
+  scale_fill_gradientn(colors=spp_palette) +
   theme(panel.grid = element_blank()) +
   ggtitle("b) Sea lion (total risk)")
 
 # All pennipeds combined
 tot <- template +
   geom_tile(data=ecosys_total_df, aes(x=x, y=y, fill=lyr.1)) +
-  scale_color_gradientn(colors=eco_palette) +
+  scale_fill_gradientn(colors=eco_palette) +
   theme(panel.grid = element_blank()) +
-  ggtitle("c) Pennipeds (combined total risk)")
+  ggtitle("c) Pennipeds (combined total risk)") +
+  annotation_north_arrow(location = "br", # North arrow
+                         pad_y=unit(1, "cm"),
+                         width = unit(0.6, "cm"),
+                         height = unit(0.8, "cm")) +
+  annotation_scale(location = "br",
+                   height = unit(0.2, "cm")) +
+  theme_bw()  +
+  labs(x = "Longitude", y="Latitude")
 
 # Plot all using the operators "|" (side-by-side) and "/" (one-over-another)
 

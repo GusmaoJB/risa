@@ -328,7 +328,11 @@ hra <- function(
     stack_cls <- terra::rast(lapply(res, function(x) x$Risk_map))
 
     total_raw <- Reduce(`+`, list_raw)
-    total_cls <- terra::app(stack_cls, fun = max, na.rm = TRUE)
+    total_cls <- if (terra::nlyr(stack_cls) == 1) {
+      stack_cls[[1]]
+    } else {
+      terra::app(stack_cls, fun = max, na.rm = TRUE)
+    }
     total_hotspots_cls <- terra::ifel(
       total_raw == 0, 0,
       terra::ifel(total_raw < (1/3)*m_jkl*n_overlap, 1,
@@ -432,8 +436,13 @@ hra <- function(
   stk <- terra::rast(rlist)
 
   # Per-cell sum of risks (ignore NA) and per-cell count of overlapping species
-  eco_sum <- terra::app(stk, sum, na.rm = TRUE)
-  eco_cnt <- terra::app(stk, function(v) sum(!is.na(v)))
+  if (terra::nlyr(stk) == 1) {
+    eco_sum <- stk[[1]]
+    eco_cnt <- terra::ifel(!is.na(stk[[1]]), 1, 0)
+  } else {
+    eco_sum <- terra::app(stk, sum, na.rm = TRUE)
+    eco_cnt <- terra::app(stk, function(v) sum(!is.na(v)))
+  }
 
   # Average over overlapping species only (sum / count), keep NA where count==0
   eco_raw <- terra::ifel(eco_cnt > 0, eco_sum / eco_cnt, NA)

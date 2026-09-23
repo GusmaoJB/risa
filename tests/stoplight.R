@@ -1,8 +1,7 @@
 library(risa)
 library(ggplot2)
-library(cowplot)
-library(patchwork)
 
+# Example data
 quality_data <- cbind.data.frame(
   level	= c("species",	"species", "species", "species",
             "stressor",	"stressor",
@@ -17,6 +16,11 @@ quality_data <- cbind.data.frame(
   uncertainty	= c(3, 2, 2, 2, 2, 3, 1, 2, 1, 2)
 )
 
+# Construct a function that converts a quality data data.frame into three
+# data.frames with color codes.
+
+# score_to_colors <- function(quality.data.frame)
+
 names(quality_data) <- c("level", "data", "species", "stressor", "uncertainty")
 
 data_types <- na.omit(unique(quality_data$data))
@@ -26,7 +30,19 @@ str <- na.omit(unique(quality_data$stressor))
 # Colorblind friendly stoplight colors: dark red (#8B0000), saturated yellow (#FFFF00),
 # and teal green (#009E73). These colors translate to the gray scale, respectively,
 # as very dark gray (~#2A2A2A), very light gray (~#E2E2E2), and medium gray (~#6A6A6A)
+
 # Helpers
+
+# Round half up
+round_half_up <- function(x, digits = 0) {
+  posneg <- sign(x)
+  z <- abs(x) * 10^digits
+  z <- z + 0.5 + sqrt(.Machine$double.eps)
+  z <- trunc(z)
+  z <- z / 10^digits
+  z * posneg
+}
+
 # Color classifier
 stoplight_cols <- function(x) {
   if(!is.numeric(x)) {
@@ -35,7 +51,7 @@ stoplight_cols <- function(x) {
   if(x > 3 | x < 0) {
     stop("Error: input must be a number ranging from 0 to 3")
   }
-  r_x <- round(x)
+  r_x <- round_half_up(x)
   ifelse(r_x == 0 | is.na(r_x), "#000000",
          ifelse(r_x == 1, "#8B0000",
                 ifelse(r_x == 2, "#FFFF00", "#009E73")))
@@ -44,41 +60,76 @@ stoplight_cols <- function(x) {
 # Null checker operator
 `%||%` <- function(a, b) if (is.null(a) || is.na(a) || a == "") b else a
 
-# Make ggplot legendts
-make_legend <- function(color_map, legend_name = NULL, point_size = 3, key_fill = NA) {
-
-  mock <- ggplot(df_unique, aes(x = 1, y = 1, color = category)) +
-    geom_point() +
-    scale_color_manual(
-      name   = legend_name %||% "",
-      values = color_map
-    ) +
-    guides(color = guide_legend(override.aes = list(size = point_size, alpha = 1)))
-
-  if (!is.na(key_fill)) {
-    mock <- mock + theme(legend.key = element_rect(fill = key_fill))
-  }
-
-  leg <- get_legend(mock)
-  wrap_elements(leg)
-}
-
 # Ecosystem stoplight
 ecosys_risk_df <- aggregate(uncertainty ~ data, data=quality_data, FUN=mean)
-ecosys_risk <- setNames(ecosys_risk_df$uncertainty, ecosys_risk_df$data)
-ecosys_risk_cols <- ecosys_risk
+ecosys_risk_cols <- ecosys_risk_df
+names(ecosys_risk_cols) <- c("light", "value")
 
-for (i in 1:length(ecosys_risk)) {
-  ecosys_risk_cols[i] <- stoplight_cols(ecosys_risk[i])
+for (i in 1:length(ecosys_risk_cols$value)) {
+  ecosys_risk_cols$value[i] <- stoplight_cols(ecosys_risk_df$uncertainty[i])
 }
 
-# Species stoplight - combined stressors
-head(quality_data)
-dat_comb_spp <- quality_data
-dat_comb_spp[is.na(dat_comb_spp)] <- "NA"
-dat_comb_spp
+# Species stoplight
+spp_risk_df <- data.frame()
+
+for (sp in spp) {
+  sp_subset <- quality_data[quality_data$species == sp |
+                            is.na(quality_data$species),]
+  sp_subset$species <- sp
+
+  spp_risk_df <- rbind.data.frame(spp_risk_df, sp_subset)
+}
+
+spp_risk_df_2 <- na.omit(spp_risk_df)
+
+for (sp in spp) {
+  sp_subset <- quality_data[!is.na(quality_data$species),]
+  sp_subset <- sp_subset[sp_subset$species == sp ,]
+  for (st in str) {
+    st_subset <- sp_subset[is.na(sp_subset$stressor),]
+    st_subset$stressor <- st
+    spp_risk_df_2 <- rbind.data.frame(spp_risk_df_2, st_subset)
+  }
+}
+
+spp_risk_vals <- spp_risk_df_2[,c("species", "stressor", "data", "uncertainty")]
+names(spp_risk_vals) <- c("species", "stressor", "light", "value")
+spp_risk_cols <- spp_risk_vals
+
+for (i in 1:length(spp_risk_cols$value)) {
+  spp_risk_cols$value[i] <- stoplight_cols(spp_risk_vals$value[i])
+}
+
+
+# Species with combined stressors
+
+spp_comb_risk_vals <- aggregate(value ~ species + light, data=spp_risk_vals, FUN=mean)
+spp_comb_risk_cols <- spp_comb_risk_vals
+
+for (i in 1:length(spp_comb_risk_cols$value)) {
+  spp_comb_risk_cols$value[i] <- stoplight_cols(spp_comb_risk_vals$value[i])
+}
+
+# it must return a list with these dataframes:
+list_color_dfs <- list(
+  ecossystem = ecosys_risk_cols,
+  species_per_stressor = spp_risk_cols,
+  species_comb_stressor = spp_comb_risk_cols
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
 spp_risk_spp <- aggregate(uncertainty ~ data + species, data = dat_comb_spp, FUN = mean)
-spp_risk_spp <- spp_risk_spp[spp_risk_spp$species %in% c(spp, "NA"),]
 
 spp_risk_cols <- list()
 
